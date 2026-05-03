@@ -10,17 +10,38 @@
   };
 
   const state = {
-    settings: { enabled: true, modes: { subway: true, tram: true, light_rail: true, train: true } },
+    settings: {
+      enabled: true,
+      transit: { enabled: true, modes: { subway: true, tram: true, light_rail: true, train: true } },
+      hoodmaps: {
+        enabled: false, labels: true, opacity: 35,
+        categories: { hipsters: true, uni: true, rich: true, suits: true, normies: true, tourists: true, nightlife: true, crime: true },
+      },
+    },
     maps: new Set(),
-    perMap: new WeakMap(), // map -> { polylines: [], lastBboxKey, fetching }
-    cache: new Map(), // tileKey -> GeoJSON-ish features
+    perMap: new WeakMap(),
+    cache: new Map(),
+    tagsBySlug: new Map(),
+    tagsPending: new Set(),
+    districtsBySlug: new Map(),
+    districtsPending: new Set(),
   };
+
+  function refreshAll(map) { refresh(map); refreshTags(map); refreshDistricts(map); refreshLegend(map); }
 
   window.addEventListener("message", (e) => {
     if (e.source !== window || !e.data || e.data.source !== "abnb-transit-overlay") return;
     if (e.data.type === "settings") {
       state.settings = e.data.settings;
-      for (const m of state.maps) refresh(m);
+      for (const m of state.maps) refreshAll(m);
+    } else if (e.data.type === "tagsResponse") {
+      state.tagsPending.delete(e.data.slug);
+      if (e.data.tags) state.tagsBySlug.set(e.data.slug, e.data.tags);
+      for (const m of state.maps) refreshTags(m);
+    } else if (e.data.type === "districtsResponse") {
+      state.districtsPending.delete(e.data.slug);
+      if (e.data.geojson) state.districtsBySlug.set(e.data.slug, e.data.geojson);
+      for (const m of state.maps) { refreshDistricts(m); refreshLegend(m); }
     }
   });
 
@@ -68,16 +89,21 @@
   function register(map) {
     if (state.maps.has(map)) return;
     state.maps.add(map);
-    state.perMap.set(map, { polylines: [], lastBboxKey: null, fetching: false });
-    map.addListener("idle", () => refresh(map));
-    refresh(map);
+    state.perMap.set(map, {
+      polylines: [], lastBboxKey: null, fetching: false,
+      tagOverlays: [], tagsSlug: null,
+      dataLayer: null, districtsSlug: null,
+      legendEl: null,
+    });
+    map.addListener("idle", () => { refresh(map); refreshTags(map); });
+    refreshAll(map);
   }
 
   async function refresh(map) {
     const entry = state.perMap.get(map);
     if (!entry) return;
 
-    if (!state.settings.enabled) {
+    if (!state.settings.enabled || !state.settings.transit || !state.settings.transit.enabled) {
       clearPolylines(entry);
       entry.lastFeatures = null;
       entry.lastBboxKey = null;
@@ -111,7 +137,7 @@
     }
 
     clearPolylines(entry);
-    const enabledModes = state.settings.modes || {};
+    const enabledModes = (state.settings.transit && state.settings.transit.modes) || {};
     const MODE_WEIGHT = { subway: 2.5, tram: 2, light_rail: 2, train: 2 };
     const MODE_Z = { train: 1, light_rail: 2, tram: 3, subway: 4 };
     for (const f of features) {
@@ -374,4 +400,258 @@
     // Named colors fall through to CSS — Google Maps accepts them.
     return c;
   }
+
+  // -------- Neighborhood tags layer (hoodmaps.com) --------
+
+  let TextOverlay = null;
+  function ensureTextOverlay() {
+    if (TextOverlay || !window.google || !google.maps || !google.maps.OverlayView) return;
+    TextOverlay = class extends google.maps.OverlayView {
+      constructor(position, text, opts) {
+        super();
+        this.position = position;
+        this.text = text;
+        this.opts = opts || {};
+        this.div = null;
+      }
+      onAdd() {
+        const div = document.createElement("div");
+        const fs = this.opts.fontSize || 12;
+        const color = this.opts.color || "#222";
+        div.style.cssText =
+          "position:absolute;transform:translate(-50%,-50%);" +
+          "font-family:-apple-system,system-ui,sans-serif;font-weight:600;" +
+          "white-space:nowrap;pointer-events:none;letter-spacing:.2px;" +
+          "text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 1px 2px rgba(0,0,0,.15);";
+        div.style.fontSize = fs + "px";
+        div.style.color = color;
+        div.textContent = this.text;
+        this.div = div;
+        this.getPanes().floatPane.appendChild(div);
+      }
+      draw() {
+        if (!this.div) return;
+        const proj = this.getProjection();
+        if (!proj) return;
+        const pt = proj.fromLatLngToDivPixel(this.position);
+        if (!pt) return;
+        this.div.style.left = pt.x + "px";
+        this.div.style.top = pt.y + "px";
+      }
+      onRemove() {
+        if (this.div && this.div.parentNode) this.div.parentNode.removeChild(this.div);
+        this.div = null;
+      }
+    };
+  }
+
+  function detectCitySlug() {
+    // Airbnb search URLs: /s/<City>--<Country>/homes  or  ?query=<City>,%20<Country>
+    const m = location.pathname.match(/\/s\/([^\/]+)\/(homes|all)/);
+    let raw = null;
+    if (m) raw = decodeURIComponent(m[1]).split(/--|,/)[0];
+    if (!raw) {
+      const q = new URLSearchParams(location.search).get("query");
+      if (q) raw = q.split(",")[0];
+    }
+    if (!raw) return null;
+    return raw.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  }
+
+  function clearTagOverlays(entry) {
+    for (const o of entry.tagOverlays) o.setMap(null);
+    entry.tagOverlays = [];
+  }
+
+  function refreshTags(map) {
+    const entry = state.perMap.get(map);
+    if (!entry) return;
+    const hm = state.settings.hoodmaps || {};
+    if (!state.settings.enabled || !hm.enabled || !hm.labels) {
+      clearTagOverlays(entry);
+      return;
+    }
+    const slug = detectCitySlug();
+    entry.tagsSlug = slug;
+    if (!slug) { clearTagOverlays(entry); return; }
+    const tags = state.tagsBySlug.get(slug);
+    if (!tags) {
+      if (!state.tagsPending.has(slug)) {
+        state.tagsPending.add(slug);
+        window.postMessage({ source: "abnb-transit-overlay-page", type: "tagsRequest", slug }, "*");
+      }
+      return;
+    }
+    ensureTextOverlay();
+    if (!TextOverlay) return;
+
+    const bounds = map.getBounds();
+    if (!bounds) return;
+    const ne = bounds.getNorthEast(), sw = bounds.getSouthWest();
+    const inView = tags.filter((t) =>
+      t.lat <= ne.lat() && t.lat >= sw.lat() && t.lng <= ne.lng() && t.lng >= sw.lng()
+    );
+
+    // Dedup near-collocated tags within ~80m grid: keep the one with most votes.
+    const GRID = 0.0008;
+    const cellBest = new Map();
+    for (const t of inView) {
+      const k = Math.round(t.lat / GRID) + "," + Math.round(t.lng / GRID);
+      const cur = cellBest.get(k);
+      if (!cur || t.votes > cur.votes) cellBest.set(k, t);
+    }
+    const ranked = [...cellBest.values()].sort((a, b) => b.votes - a.votes);
+
+    // Cap at MAX based on zoom: more zoom = more labels.
+    const z = map.getZoom() || 12;
+    const MAX = z >= 15 ? 80 : z >= 13 ? 50 : 30;
+    const top = ranked.slice(0, MAX);
+
+    clearTagOverlays(entry);
+    for (const t of top) {
+      const fontSize = Math.min(18, Math.max(11, 10 + Math.log2(Math.max(2, t.votes)) * 1.2));
+      const color = t.sentiment > 1 ? "#1f7a3a" : t.sentiment < -1 ? "#a8323d" : "#333";
+      const o = new TextOverlay(new google.maps.LatLng(t.lat, t.lng), t.text, { fontSize, color });
+      o.setMap(map);
+      entry.tagOverlays.push(o);
+    }
+  }
+
+  // -------- Categorized neighborhood zones (hoodmaps districts geojson) --------
+
+  // Hoodmaps' 8 categories, using their own color code (sampled from the
+  // hoodmaps.com legend). The geojson per-feature `opacity` is multiplied with
+  // our base alpha so denser zones look stronger.
+  const CATEGORY_COLORS = {
+    hipsters: "#F1C40F", // hoodmaps "Cool" — yellow
+    uni: "#1F3A5F",      // dark navy
+    rich: "#2ECC71",     // vivid green
+    suits: "#5DADE2",    // sky blue
+    normies: "#D5DBDB",  // light grey
+    tourists: "#E74C3C", // red
+    nightlife: "#9B51E0",// purple (not in hoodmaps legend strip — kept)
+    crime: "#2C3E50",    // dark grey/near-black
+  };
+
+  function refreshDistricts(map) {
+    const entry = state.perMap.get(map);
+    if (!entry) return;
+    const hm = state.settings.hoodmaps || {};
+    if (!state.settings.enabled || !hm.enabled) {
+      if (entry.dataLayer) { entry.dataLayer.setMap(null); entry.dataLayer = null; entry.districtsSlug = null; }
+      return;
+    }
+    const slug = detectCitySlug();
+    if (!slug) return;
+    const geojson = state.districtsBySlug.get(slug);
+    if (!geojson) {
+      if (!state.districtsPending.has(slug)) {
+        state.districtsPending.add(slug);
+        window.postMessage({ source: "abnb-transit-overlay-page", type: "districtsRequest", slug }, "*");
+      }
+      return;
+    }
+
+    if (!entry.dataLayer || entry.districtsSlug !== slug) {
+      if (entry.dataLayer) entry.dataLayer.setMap(null);
+      const data = new google.maps.Data({ map });
+      data.addGeoJson(geojson);
+      entry.dataLayer = data;
+      entry.districtsSlug = slug;
+    }
+
+    // Always (re-)apply style so per-category toggles + opacity slider take
+    // effect immediately. `hm.opacity` is the user's slider value (0-100); the
+    // GeoJSON's per-feature `opacity` is a relative density signal we keep as
+    // a multiplier so dense zones still read stronger than sparse ones.
+    const cats = hm.categories || {};
+    const maxFill = Math.max(0, Math.min(1, (hm.opacity ?? 35) / 100));
+    entry.dataLayer.setStyle((feature) => {
+      const cat = feature.getProperty("category");
+      if (!cats[cat]) return { visible: false };
+      const featureWeight = Number(feature.getProperty("opacity")) || 0.5;
+      const color = CATEGORY_COLORS[cat] || "#888";
+      const fillOpacity = maxFill * (0.4 + featureWeight * 0.6);
+      const strokeOpacity = Math.min(1, fillOpacity * 1.2);
+      return {
+        fillColor: color, fillOpacity,
+        strokeColor: color, strokeOpacity, strokeWeight: 1,
+        clickable: false, zIndex: 0, visible: true,
+      };
+    });
+  }
+
+  // -------- Map legend (bottom-left) --------
+
+  const CATEGORY_LABEL = {
+    hipsters: "Hipsters", uni: "University", rich: "Rich", suits: "Suits",
+    normies: "Normies", tourists: "Tourists", nightlife: "Nightlife", crime: "Crime",
+  };
+
+  function refreshLegend(map) {
+    const entry = state.perMap.get(map);
+    if (!entry) return;
+    const hm = state.settings.hoodmaps || {};
+    const show = state.settings.enabled && hm.enabled;
+    if (!show) {
+      if (entry.legendEl) {
+        const arr = map.controls[google.maps.ControlPosition.LEFT_BOTTOM];
+        for (let i = arr.getLength() - 1; i >= 0; i--) {
+          if (arr.getAt(i) === entry.legendEl) { arr.removeAt(i); break; }
+        }
+        entry.legendEl = null;
+      }
+      return;
+    }
+    if (!entry.legendEl) {
+      const el = document.createElement("div");
+      el.style.cssText = [
+        "background:rgba(255,255,255,0.95)",
+        "border-radius:8px",
+        "padding:8px 10px",
+        "margin:8px",
+        "box-shadow:0 1px 4px rgba(0,0,0,0.18)",
+        "font:12px -apple-system,system-ui,sans-serif",
+        "color:#222",
+        "min-width:96px",
+      ].join(";");
+      map.controls[google.maps.ControlPosition.LEFT_BOTTOM].push(el);
+      entry.legendEl = el;
+    }
+    const cats = hm.categories || {};
+    // Intersect "user has it enabled" with "the city's GeoJSON actually
+    // contains this category". The popup still shows every category, but the
+    // map legend only lists what's present locally — Stockholm has no
+    // "crime" polygons, no point listing it on the legend.
+    const slug = detectCitySlug();
+    const geojson = slug ? state.districtsBySlug.get(slug) : null;
+    const present = new Set();
+    if (geojson && Array.isArray(geojson.features)) {
+      for (const f of geojson.features) {
+        const c = f && f.properties && f.properties.category;
+        if (c) present.add(c);
+      }
+    }
+    while (entry.legendEl.firstChild) entry.legendEl.removeChild(entry.legendEl.firstChild);
+    const visible = Object.keys(CATEGORY_LABEL).filter((k) => cats[k] && present.has(k));
+    if (!visible.length) {
+      const empty = document.createElement("div");
+      empty.style.color = "#888";
+      empty.textContent = "No zones selected";
+      entry.legendEl.appendChild(empty);
+      return;
+    }
+    for (const k of visible) {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:6px;line-height:1.6;";
+      const sw = document.createElement("span");
+      sw.style.cssText = "width:12px;height:12px;border-radius:3px;display:inline-block;background:" + (CATEGORY_COLORS[k] || "#888") + ";";
+      const txt = document.createElement("span");
+      txt.textContent = CATEGORY_LABEL[k];
+      row.appendChild(sw);
+      row.appendChild(txt);
+      entry.legendEl.appendChild(row);
+    }
+  }
+
 })();

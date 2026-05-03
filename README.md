@@ -1,7 +1,12 @@
-# Airbnb Transit Overlay
+# Airbnb Better Maps
 
-Chrome extension (MV3) that overlays metro, tram, light rail, and commuter rail
-lines from OpenStreetMap onto Airbnb's Google Maps view.
+Chrome extension (MV3) that adds two layers to Airbnb's Google Maps view:
+
+- **Transit lines** (subway, tram, light rail, commuter rail) sourced from
+  OpenStreetMap via the Overpass API.
+- **Neighborhood character zones** (hipsters, university, rich, suits, normies,
+  tourists, nightlife, crime) plus crowdsourced text labels, sourced from
+  hoodmaps.com.
 
 ## Install (unpacked)
 
