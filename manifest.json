@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Airbnb Transit Overlay",
+  "version": "0.1.0",
+  "description": "Overlays metro, tram, and rail lines from OpenStreetMap onto Airbnb's map.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://www.airbnb.com/*",
+    "https://www.airbnb.fr/*",
+    "https://www.airbnb.co.uk/*",
+    "https://overpass-api.de/*",
+    "https://overpass.kumi.systems/*"
+  ],
+  "action": {
+    "default_title": "Airbnb Transit Overlay",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.airbnb.com/*",
+        "https://www.airbnb.fr/*",
+        "https://www.airbnb.co.uk/*"
+      ],
+      "js": ["bridge.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["page.js"],
+      "matches": [
+        "https://www.airbnb.com/*",
+        "https://www.airbnb.fr/*",
+        "https://www.airbnb.co.uk/*"
+      ]
+    }
+  ]
+}
