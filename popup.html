@@ -10,127 +10,141 @@
         --line: #ececec;
         --card: #fafafa;
         --card-border: #ececec;
-        --accent: #ff385c; /* airbnb-ish */
+        --accent: #ff385c;
       }
-      * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+      }
       body {
-        font: 13px -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
-        width: 280px; padding: 14px; margin: 0;
-        color: var(--fg); background: var(--bg);
+        font:
+          13px -apple-system,
+          BlinkMacSystemFont,
+          system-ui,
+          "Segoe UI",
+          sans-serif;
+        width: 280px;
+        padding: 14px;
+        margin: 0;
+        color: var(--fg);
+        background: var(--bg);
       }
       h1 {
-        font-size: 14px; font-weight: 600; margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+        margin: 0;
         letter-spacing: -0.01em;
       }
-
-      /* Header row: title + master toggle on the same line */
       .header {
-        display: flex; align-items: center; justify-content: space-between;
-        gap: 10px; margin-bottom: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 14px;
       }
 
-      /* Section card */
-      .section {
-        border: 1px solid var(--card-border); border-radius: 10px;
-        background: var(--card); margin-bottom: 10px; overflow: hidden;
-        transition: opacity .15s ease;
-      }
-      .section[data-disabled="true"] { opacity: .45; }
-      .section-head {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 10px 12px;
-      }
-      .section-head .label { font-weight: 600; }
-      .section-body {
-        padding: 4px 12px 10px;
-        border-top: 1px solid var(--line);
-      }
-      .section[data-section-on="false"] .section-body { display: none; }
-
-      /* Rows */
-      .row {
-        display: flex; align-items: center; gap: 8px;
-        padding: 6px 0; cursor: pointer; user-select: none;
-      }
-      .row.disabled { cursor: not-allowed; opacity: .4; }
-      .row input[type="checkbox"] {
-        margin: 0; cursor: pointer; accent-color: var(--accent);
-        width: 14px; height: 14px;
-      }
-      .row input[type="checkbox"]:disabled { cursor: not-allowed; }
-      .row .swatch {
-        width: 12px; height: 12px; border-radius: 3px;
-        flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.06);
-      }
-      .row .text { line-height: 1.2; }
-
-      /* Subsection label */
-      .sub-head {
-        font-size: 11px; color: var(--muted); text-transform: uppercase;
-        letter-spacing: 0.06em; margin: 8px 0 2px;
-      }
-
-      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
-
-      /* Opacity slider */
-      .slider-row {
-        display: flex; align-items: center; gap: 8px;
-        padding: 4px 0 6px;
-      }
-      .slider-row .label-text { flex: 0 0 auto; font-size: 12px; }
-      .slider-row .value {
-        flex: 0 0 auto; font-variant-numeric: tabular-nums;
-        font-size: 11px; color: var(--muted); min-width: 30px; text-align: right;
-      }
-      .slider-row input[type="range"] {
-        flex: 1; accent-color: var(--accent); cursor: pointer;
-      }
-      .slider-row input[type="range"]:disabled { cursor: not-allowed; opacity: .5; }
-
-      /* Status pill (live map detection feedback) */
+      /* Status pill */
       .status {
-        display: flex; align-items: center; gap: 8px;
-        font-size: 11px; color: var(--muted);
-        padding: 8px 10px; border-radius: 8px;
-        background: #f4f4f4; margin: 4px 0 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        color: var(--muted);
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #f4f4f4;
+        margin: 4px 0 14px;
       }
       .status .dot {
-        width: 8px; height: 8px; border-radius: 50%;
-        background: #c0c0c0; flex: 0 0 auto;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #c0c0c0;
+        flex: 0 0 auto;
       }
       .status[data-state="searching"] .dot {
-        background: #f0a020; animation: pulse 1.2s ease-in-out infinite;
+        background: #f0a020;
+        animation: pulse 1.2s ease-in-out infinite;
       }
-      .status[data-state="found"] .dot { background: #2ecc71; }
-      .status[data-state="error"] .dot { background: #e74c3c; }
-      @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+      .status[data-state="found"] .dot {
+        background: #2ecc71;
+      }
+      .status[data-state="error"] .dot {
+        background: #e74c3c;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
 
-      /* Toggle switch (replaces checkbox for master + section heads) */
-      .toggle { position: relative; width: 34px; height: 20px; flex: 0 0 auto; }
+      /* iOS-style toggle */
+      .toggle {
+        position: relative;
+        width: 34px;
+        height: 20px;
+        flex: 0 0 auto;
+      }
       .toggle input {
-        opacity: 0; width: 0; height: 0;
+        opacity: 0;
+        width: 0;
+        height: 0;
         position: absolute;
       }
       .toggle .slider {
-        position: absolute; cursor: pointer; inset: 0;
-        background: #cfcfcf; border-radius: 999px;
-        transition: background .15s ease;
+        position: absolute;
+        cursor: pointer;
+        inset: 0;
+        background: #cfcfcf;
+        border-radius: 999px;
+        transition: background 0.15s ease;
       }
       .toggle .slider::before {
-        content: ""; position: absolute;
-        width: 16px; height: 16px; left: 2px; top: 2px;
-        background: #fff; border-radius: 50%;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-        transition: transform .15s ease;
+        content: "";
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        left: 2px;
+        top: 2px;
+        background: #fff;
+        border-radius: 50%;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        transition: transform 0.15s ease;
       }
-      .toggle input:checked + .slider { background: var(--accent); }
-      .toggle input:checked + .slider::before { transform: translateX(14px); }
-      .toggle input:disabled + .slider { opacity: .45; cursor: not-allowed; }
+      .toggle input:checked + .slider {
+        background: var(--accent);
+      }
+      .toggle input:checked + .slider::before {
+        transform: translateX(14px);
+      }
 
-      .footer { color: var(--muted); font-size: 11px; margin-top: 10px; line-height: 1.5; }
-      .footer .row-line { display: block; }
-      .footer a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
-      .footer a:hover { color: var(--fg); }
+      .hint {
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.5;
+        margin: 4px 0 12px;
+      }
+
+      .footer {
+        color: var(--muted);
+        font-size: 11px;
+        margin-top: 4px;
+        line-height: 1.5;
+      }
+      .footer .row-line {
+        display: block;
+      }
+      .footer a {
+        color: var(--muted);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .footer a:hover {
+        color: var(--fg);
+      }
     </style>
   </head>
   <body>
@@ -147,54 +161,27 @@
       <span class="text" id="mapStatusText">Looking for map…</span>
     </div>
 
-    <div class="section" id="transitSection">
-      <div class="section-head">
-        <div class="label">Transit</div>
-        <label class="toggle">
-          <input type="checkbox" id="transitEnabled" />
-          <span class="slider"></span>
-        </label>
-      </div>
-      <div class="section-body">
-        <label class="row"><input type="checkbox" data-mode="subway" /><span class="swatch" style="background:#0066B3"></span><span class="text">Subway / Metro</span></label>
-        <label class="row"><input type="checkbox" data-mode="tram" /><span class="swatch" style="background:#E60012"></span><span class="text">Tram</span></label>
-        <label class="row"><input type="checkbox" data-mode="light_rail" /><span class="swatch" style="background:#8E44AD"></span><span class="text">Light rail</span></label>
-        <label class="row"><input type="checkbox" data-mode="train" /><span class="swatch" style="background:#2E7D32"></span><span class="text">Commuter rail</span></label>
-      </div>
-    </div>
-
-    <div class="section" id="hoodmapsSection">
-      <div class="section-head">
-        <div class="label">Hoodmaps</div>
-        <label class="toggle">
-          <input type="checkbox" id="hoodmapsEnabled" />
-          <span class="slider"></span>
-        </label>
-      </div>
-      <div class="section-body">
-        <label class="row"><input type="checkbox" id="hoodmapsLabels" /><span class="text">Show names (text labels)</span></label>
-        <div class="slider-row">
-          <span class="label-text">Opacity</span>
-          <input type="range" id="hoodmapsOpacity" min="0" max="100" step="1" />
-          <span class="value" id="hoodmapsOpacityValue">35%</span>
-        </div>
-        <div class="sub-head">Zone categories</div>
-        <div class="grid-2">
-          <label class="row"><input type="checkbox" data-cat="hipsters" /><span class="swatch" style="background:#F1C40F"></span><span class="text">Hipsters</span></label>
-          <label class="row"><input type="checkbox" data-cat="uni" /><span class="swatch" style="background:#1F3A5F"></span><span class="text">University</span></label>
-          <label class="row"><input type="checkbox" data-cat="rich" /><span class="swatch" style="background:#2ECC71"></span><span class="text">Rich</span></label>
-          <label class="row"><input type="checkbox" data-cat="suits" /><span class="swatch" style="background:#5DADE2"></span><span class="text">Suits</span></label>
-          <label class="row"><input type="checkbox" data-cat="normies" /><span class="swatch" style="background:#D5DBDB"></span><span class="text">Normies</span></label>
-          <label class="row"><input type="checkbox" data-cat="tourists" /><span class="swatch" style="background:#E74C3C"></span><span class="text">Tourists</span></label>
-          <label class="row"><input type="checkbox" data-cat="nightlife" /><span class="swatch" style="background:#9B51E0"></span><span class="text">Nightlife</span></label>
-          <label class="row"><input type="checkbox" data-cat="crime" /><span class="swatch" style="background:#2C3E50"></span><span class="text">Crime</span></label>
-        </div>
-      </div>
-    </div>
+    <p class="hint">
+      Click the layer control on the top left of the map to start using the
+      layers. Zoom in to reveal more tags.
+    </p>
 
     <div class="footer">
-      <span class="row-line">Transit lines from <a href="https://www.openstreetmap.org" target="_blank" rel="noopener noreferrer">openstreetmap.org</a></span>
-      <span class="row-line">Neighborhood zones from <a href="https://hoodmaps.com" target="_blank" rel="noopener noreferrer">hoodmaps.com</a></span>
+      <span class="row-line"
+        >Transit lines from
+        <a
+          href="https://www.openstreetmap.org"
+          target="_blank"
+          rel="noopener noreferrer"
+          >openstreetmap.org</a
+        ></span
+      >
+      <span class="row-line"
+        >Neighborhood zones from
+        <a href="https://hoodmaps.com" target="_blank" rel="noopener noreferrer"
+          >hoodmaps.com</a
+        ></span
+      >
     </div>
 
     <script src="popup.js"></script>
