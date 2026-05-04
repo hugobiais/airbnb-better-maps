@@ -49,7 +49,7 @@ export async function refreshTransit(map) {
       entry.lastBboxKey = bboxKey;
       entry.lastFeatures = features;
     } catch (err) {
-      console.warn("[abnb-transit] fetch failed:", err);
+      console.warn("[abnb-better-maps] Overpass fetch failed:", err);
       return;
     } finally {
       entry.fetching = false;
