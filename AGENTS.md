@@ -188,6 +188,15 @@ Follow the rules in CLAUDE-style guidelines:
 - **Match existing style.** 2-space indent, double quotes, semicolons,
   trailing commas in multi-line objects/arrays.
 
+### Commit messages
+
+- **Keep them short.** Subject line under ~72 chars, present tense
+  imperative ("fix X", "split Y into Z"). Add a short body only when
+  the *why* needs explaining; otherwise the subject is enough.
+- **Do not add `Co-Authored-By: Claude` (or any AI attribution)
+  trailers.** Plain commits, no AI footer.
+- **Do not add the "🤖 Generated with Claude Code" footer either.**
+
 ## Local test loop
 
 1. `chrome://extensions` → toggle the extension off and back on (or
