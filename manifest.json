@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Airbnb Better Maps",
   "version": "0.4.0",
-  "description": "Adds extra layers to Airbnb's map so you can pick the best place to stay based on what matters to you.",
+  "description": "See transit lines, neighborhood vibes, and crowdsourced tags right on Airbnb's map. Pick the best place to stay.",
   "permissions": ["storage", "scripting"],
   "host_permissions": [
     "https://*.airbnb.com/*",
