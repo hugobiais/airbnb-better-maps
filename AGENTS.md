@@ -202,6 +202,8 @@ Follow the rules in CLAUDE-style guidelines:
 
 ## Local test loop
 
+### Manual
+
 1. `chrome://extensions` → toggle the extension off and back on (or
    click its reload icon). This re-reads `manifest.json` and reloads
    all extension scripts.
@@ -209,10 +211,27 @@ Follow the rules in CLAUDE-style guidelines:
    navigation, so a SPA route change won't reload them.
 3. DevTools → Console: `bridge.js` logs to the _page's_ console (it's
    in the isolated world but `console.log` shows up in the same tab
-   console). `page.js` logs there too. Filter by `[abnb-transit]` for
-   transit fetch errors.
+   console). `page.js` logs there too. Filter by `[abnb-better-maps]`
+   for perf logs and `[abnb-transit]` for transit fetch errors.
 4. To inspect storage: DevTools → Application → Storage → Extension
    storage → Local → `transitOverlay`.
+
+### With Claude Code (`chrome-cdp` skill)
+
+If the `chrome-cdp` skill is available, use it to test the extension
+in a live Chrome session instead of asking the user to verify manually.
+
+1. Navigate to an Airbnb search page (e.g. `/s/Paris/homes`).
+2. Check the console for `[abnb-better-maps:perf]` logs confirming
+   the extension injected and layers loaded.
+3. Verify the "Layers" pill is visible on the map by inspecting the
+   DOM for a shadow host with `.pill` inside `map.controls`.
+4. Toggle layers on/off via the controls and confirm polylines /
+   district polygons / tag overlays appear or disappear.
+5. Check `chrome.storage.local` for cached tile and hoodmaps entries.
+
+Use console reads and DOM inspection through CDP — do not rely solely
+on screenshots, since the overlay renders on a Google Maps canvas.
 
 ## Things to be careful with
 
