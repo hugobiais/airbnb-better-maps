@@ -2,186 +2,79 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <style>
-      :root {
-        --bg: #ffffff;
-        --fg: #1a1a1a;
-        --muted: #6b6b6b;
-        --line: #ececec;
-        --card: #fafafa;
-        --card-border: #ececec;
-        --accent: #ff385c;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        font:
-          13px -apple-system,
-          BlinkMacSystemFont,
-          system-ui,
-          "Segoe UI",
-          sans-serif;
-        width: 280px;
-        padding: 14px;
-        margin: 0;
-        color: var(--fg);
-        background: var(--bg);
-      }
-      h1 {
-        font-size: 14px;
-        font-weight: 600;
-        margin: 0;
-        letter-spacing: -0.01em;
-      }
-      .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        margin-bottom: 14px;
-      }
-
-      /* Status pill */
-      .status {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 11px;
-        color: var(--muted);
-        padding: 8px 10px;
-        border-radius: 8px;
-        background: #f4f4f4;
-        margin: 4px 0 14px;
-      }
-      .status .dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #c0c0c0;
-        flex: 0 0 auto;
-      }
-      .status[data-state="searching"] .dot {
-        background: #f0a020;
-        animation: pulse 1.2s ease-in-out infinite;
-      }
-      .status[data-state="found"] .dot {
-        background: #2ecc71;
-      }
-      .status[data-state="error"] .dot {
-        background: #e74c3c;
-      }
-      @keyframes pulse {
-        0%,
-        100% {
-          opacity: 1;
-        }
-        50% {
-          opacity: 0.35;
-        }
-      }
-
-      /* iOS-style toggle */
-      .toggle {
-        position: relative;
-        width: 34px;
-        height: 20px;
-        flex: 0 0 auto;
-      }
-      .toggle input {
-        opacity: 0;
-        width: 0;
-        height: 0;
-        position: absolute;
-      }
-      .toggle .slider {
-        position: absolute;
-        cursor: pointer;
-        inset: 0;
-        background: #cfcfcf;
-        border-radius: 999px;
-        transition: background 0.15s ease;
-      }
-      .toggle .slider::before {
-        content: "";
-        position: absolute;
-        width: 16px;
-        height: 16px;
-        left: 2px;
-        top: 2px;
-        background: #fff;
-        border-radius: 50%;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-        transition: transform 0.15s ease;
-      }
-      .toggle input:checked + .slider {
-        background: var(--accent);
-      }
-      .toggle input:checked + .slider::before {
-        transform: translateX(14px);
-      }
-
-      .hint {
-        font-size: 11px;
-        color: var(--muted);
-        line-height: 1.5;
-        margin: 4px 0 12px;
-      }
-
-      .footer {
-        color: var(--muted);
-        font-size: 11px;
-        margin-top: 4px;
-        line-height: 1.5;
-      }
-      .footer .row-line {
-        display: block;
-      }
-      .footer a {
-        color: var(--muted);
-        text-decoration: underline;
-        text-underline-offset: 2px;
-      }
-      .footer a:hover {
-        color: var(--fg);
-      }
-    </style>
+    <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <div class="header">
-      <h1>Airbnb Better Maps</h1>
-      <label class="toggle" title="Enable / disable the whole extension">
-        <input type="checkbox" id="masterEnabled" />
-        <span class="slider"></span>
-      </label>
+    <div class="page" id="pageMain">
+      <div class="header">
+        <h1>Airbnb Better Maps</h1>
+        <label class="toggle" title="Enable / disable the whole extension">
+          <input type="checkbox" id="masterEnabled" />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="status" id="mapStatus" data-state="searching">
+        <div class="row">
+          <span class="dot"></span>
+          <span class="text" id="mapStatusText">Looking for map…</span>
+        </div>
+        <div class="hint">
+          Click the layer control on the top left of the map to start using the
+          layers. Zoom in to reveal more tags.
+        </div>
+      </div>
+
+      <div class="cache-row">
+        <span class="label">
+          <span>Cached data</span>
+          <strong id="cacheSize">…</strong>
+        </span>
+        <button id="manageCache" type="button">Manage</button>
+      </div>
+
+      <div class="footer">
+        <span class="row-line"
+          >Transit lines from
+          <a
+            href="https://www.openstreetmap.org"
+            target="_blank"
+            rel="noopener noreferrer"
+            >openstreetmap.org</a
+          ></span
+        >
+        <span class="row-line"
+          >Neighborhood zones from
+          <a
+            href="https://hoodmaps.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            >hoodmaps.com</a
+          ></span
+        >
+      </div>
     </div>
 
-    <div class="status" id="mapStatus" data-state="searching">
-      <span class="dot"></span>
-      <span class="text" id="mapStatusText">Looking for map…</span>
-    </div>
-
-    <p class="hint">
-      Click the layer control on the top left of the map to start using the
-      layers. Zoom in to reveal more tags.
-    </p>
-
-    <div class="footer">
-      <span class="row-line"
-        >Transit lines from
-        <a
-          href="https://www.openstreetmap.org"
-          target="_blank"
-          rel="noopener noreferrer"
-          >openstreetmap.org</a
-        ></span
-      >
-      <span class="row-line"
-        >Neighborhood zones from
-        <a href="https://hoodmaps.com" target="_blank" rel="noopener noreferrer"
-          >hoodmaps.com</a
-        ></span
-      >
+    <div class="page" id="pageCache" hidden>
+      <div class="page-head">
+        <button class="back-btn" id="cacheBack" type="button" aria-label="Back">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <h1 class="page-title">Cached data</h1>
+        <button class="clear-all" id="cacheClearAll" type="button" hidden>
+          Clear all
+        </button>
+      </div>
+      <ul class="cache-list" id="cacheList"></ul>
     </div>
 
     <script src="popup.js"></script>

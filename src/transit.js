@@ -1,9 +1,10 @@
-// Transit lines layer: fetches OSM route relations from Overpass for the
-// current bbox, stitches direction-pair routes into single polylines, and
-// renders via google.maps.Polyline.
+// Transit lines layer: receives parsed, simplified, mode-bucketed polyline
+// features from the bridge's Overpass proxy and renders them via
+// google.maps.Polyline. Parsing/stitching/simplification all happen in
+// bridge.js so the cache stores render-ready geometry.
 
-import { state } from "./state.js";
-import { quantizeBbox, normalizeColor, douglasPeucker } from "./utils.js";
+import { state, PAGE_SOURCE } from "./state.js";
+import { quantizeBbox, detectCitySlug } from "./utils.js";
 
 // Fallbacks when OSM has no `colour` tag for a route.
 const MODE_FALLBACK_COLORS = {
@@ -14,53 +15,136 @@ const MODE_FALLBACK_COLORS = {
 };
 const MODE_WEIGHT = { subway: 2.5, tram: 2, light_rail: 2, train: 2 };
 const MODE_Z = { train: 1, light_rail: 2, tram: 3, subway: 4 };
+const PERF_PREFIX = "[abnb-better-maps:perf]";
 
 export async function refreshTransit(map) {
+  const startedAt = performance.now();
   const entry = state.perMap.get(map);
   if (!entry) return;
 
-  if (
-    !state.settings.enabled ||
-    !state.settings.transit ||
-    !state.settings.transit.enabled
-  ) {
+  if (!isTransitEnabled()) {
     clearPolylines(entry);
     entry.lastFeatures = null;
     entry.lastBboxKey = null;
+    setTransitLoading(entry, false);
     return;
   }
 
-  const bounds = map.getBounds();
-  if (!bounds) return;
-  const ne = bounds.getNorthEast();
-  const sw = bounds.getSouthWest();
-  const bboxKey = quantizeBbox(sw.lat(), sw.lng(), ne.lat(), ne.lng());
+  // Skip the fetch when the viewport spans more than ~1° in either axis.
+  // Without this, a zoomed-out view (country/continent) would ask Overpass
+  // for every rail relation in that box — commuter rail alone can return
+  // 100+ MB across a country. We leave any existing polylines on the map so
+  // the user keeps their context while zoomed out; new data only loads once
+  // they zoom back in.
+  if (viewportTooLarge(map)) {
+    entry.loadingModes = null;
+    setTransitLoading(entry, false);
+    return;
+  }
 
-  if (entry.fetching) return;
+  const bboxKey = currentBboxKey(map);
+  if (!bboxKey) return;
+
+  if (entry.fetching) {
+    if (entry.fetchingBboxKey !== bboxKey) entry.needsTransitRefresh = true;
+    setTransitLoading(entry, true);
+    console.log(PERF_PREFIX, "transit deferred", {
+      bboxKey,
+      fetchingBboxKey: entry.fetchingBboxKey,
+      totalMs: roundMs(performance.now() - startedAt),
+    });
+    return;
+  }
+
+  const modes = enabledModeList();
+  if (!modes.length) {
+    clearPolylines(entry);
+    entry.lastFeatures = null;
+    entry.lastBboxKey = null;
+    entry.lastModes = [];
+    entry.loadingModes = null;
+    setTransitLoading(entry, false);
+    return;
+  }
+  const requestKey = modes.join(",") + "|" + bboxKey;
 
   let features;
-  if (entry.lastBboxKey === bboxKey && entry.lastFeatures) {
-    // bbox unchanged — just redraw with the current mode filter.
+  let source = "bridge";
+  let fetchMs = 0;
+  const previousModesForCheck = entry.lastModes || [];
+  const isSubsetOfLast =
+    entry.lastFeatures &&
+    entry.lastBboxKey === bboxKey &&
+    modes.every((m) => previousModesForCheck.includes(m));
+  if (entry.lastRequestKey === requestKey && entry.lastFeatures) {
+    // bbox + mode set unchanged — just redraw.
+    source = "per-map";
     features = entry.lastFeatures;
+  } else if (isSubsetOfLast) {
+    // Mode set shrank (e.g., user unticked one). The render loop filters by
+    // enabled modes, so drop the network round-trip and redraw locally.
+    source = "per-map-subset";
+    features = entry.lastFeatures;
+    entry.lastRequestKey = requestKey;
+    entry.lastModes = modes.slice();
   } else {
     entry.fetching = true;
+    entry.fetchingBboxKey = bboxKey;
+    // Per-row spinner is for newly enabled modes only. If the fetch is for a
+    // bbox change with the same mode set, we leave loadingModes null so the
+    // already-rendered rows don't flash a spinner — only the pill spins.
+    const previousModes = entry.lastModes || [];
+    const newlyAdded = modes.filter((m) => !previousModes.includes(m));
+    entry.loadingModes = newlyAdded.length ? new Set(newlyAdded) : null;
+    setTransitLoading(entry, true);
+    let fetchStartedAt = 0;
     try {
-      features = await fetchTransit(bboxKey);
+      source = state.cache.has(requestKey)
+        ? "page-cache"
+        : state.transitRequests.has(requestKey)
+          ? "page-inflight"
+          : "bridge";
+      fetchStartedAt = performance.now();
+      features = await fetchTransit(bboxKey, modes, requestKey);
+      fetchMs = performance.now() - fetchStartedAt;
+      if (!isTransitEnabled()) return;
+      if (currentBboxKey(map) !== bboxKey) {
+        entry.needsTransitRefresh = true;
+        return;
+      }
       entry.lastBboxKey = bboxKey;
+      entry.lastRequestKey = requestKey;
       entry.lastFeatures = features;
+      entry.lastModes = modes.slice();
     } catch (err) {
-      console.warn("[abnb-better-maps] Overpass fetch failed:", err);
+      if (fetchStartedAt) fetchMs = performance.now() - fetchStartedAt;
+      console.warn("[abnb-better-maps] Overpass fetch failed:", err, {
+        bboxKey,
+        source,
+        fetchMs: roundMs(fetchMs),
+      });
       return;
     } finally {
       entry.fetching = false;
+      entry.fetchingBboxKey = null;
+      entry.loadingModes = null;
+      setTransitLoading(entry, false);
+      if (entry.needsTransitRefresh) {
+        entry.needsTransitRefresh = false;
+        refreshTransit(map);
+      }
     }
   }
 
+  const renderStartedAt = performance.now();
   clearPolylines(entry);
+  let drawn = 0;
+  let points = 0;
   const enabledModes =
     (state.settings.transit && state.settings.transit.modes) || {};
   for (const f of features) {
     if (!enabledModes[f.mode]) continue;
+    points += Array.isArray(f.path) ? f.path.length : 0;
     const polyline = new google.maps.Polyline({
       path: f.path,
       strokeColor: f.color || MODE_FALLBACK_COLORS[f.mode] || "#444",
@@ -72,7 +156,19 @@ export async function refreshTransit(map) {
       map,
     });
     entry.polylines.push(polyline);
+    drawn++;
   }
+  console.log(PERF_PREFIX, "transit refresh", {
+    bboxKey,
+    modes,
+    source,
+    fetchMs: roundMs(fetchMs),
+    renderMs: roundMs(performance.now() - renderStartedAt),
+    totalMs: roundMs(performance.now() - startedAt),
+    features: features.length,
+    drawn,
+    points,
+  });
 }
 
 function clearPolylines(entry) {
@@ -80,201 +176,93 @@ function clearPolylines(entry) {
   entry.polylines = [];
 }
 
-async function fetchTransit(bboxKey) {
-  if (state.cache.has(bboxKey)) return state.cache.get(bboxKey);
-  const [s, w, n, e] = bboxKey.split(",").map(Number);
-  // Pad slightly so we don't refetch on tiny pans.
-  const pad = 0.02;
-  const bbox = `${s - pad},${w - pad},${n + pad},${e + pad}`;
+async function fetchTransit(bboxKey, modes, requestKey) {
+  if (state.cache.has(requestKey)) return state.cache.get(requestKey);
+  const inflight = state.transitRequests.get(requestKey);
+  if (inflight) return inflight;
 
-  // We deliberately query `route` (not `route_master`): in many regions
-  // (e.g. Stockholm) mappers don't create master relations, so master
-  // bbox queries return nothing. Direction-pair routes get collapsed
-  // below by grouping on route + network + ref + colour.
-  const query = `
-    [out:json][timeout:25];
-    (
-      relation["type"="route"]["route"~"^(subway|tram|light_rail|train)$"](${bbox});
+  const citySlug = detectCitySlug() || "unknown";
+  const request = new Promise((resolve, reject) => {
+    state.transitPending.set(requestKey, { resolve, reject });
+    window.postMessage(
+      {
+        source: PAGE_SOURCE,
+        type: "transitRequest",
+        bboxKey,
+        modes,
+        citySlug,
+        requestKey,
+      },
+      "*",
     );
-    out body;
-    >;
-    out skel qt;
-  `;
-  const res = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: "data=" + encodeURIComponent(query),
-  });
-  if (!res.ok) throw new Error("overpass " + res.status);
-  const json = await res.json();
-  const features = parseOverpass(json);
-  state.cache.set(bboxKey, features);
-  return features;
+  })
+    .then((features) => {
+      state.cache.set(requestKey, features);
+      return features;
+    })
+    .finally(() => {
+      state.transitRequests.delete(requestKey);
+    });
+  state.transitRequests.set(requestKey, request);
+  return request;
 }
 
-function parseOverpass(json) {
-  const VALID = ["subway", "tram", "light_rail", "train"];
-  const nodes = new Map();
-  const ways = new Map();
-  const routes = [];
-  for (const el of json.elements) {
-    if (el.type === "node") nodes.set(el.id, [el.lat, el.lon]);
-    else if (el.type === "way") ways.set(el.id, el.nodes);
-    else if (
-      el.type === "relation" &&
-      el.tags &&
-      el.tags.type === "route" &&
-      VALID.includes(el.tags.route)
-    ) {
-      routes.push(el);
-    }
+export function handleTransitResponse(msg) {
+  const key = msg.requestKey || msg.bboxKey;
+  const pending = state.transitPending.get(key);
+  if (!pending) return;
+  state.transitPending.delete(key);
+  if (msg.error) {
+    pending.reject(new Error(msg.error));
+    return;
   }
-
-  // Collapse direction-pair routes (same line, different `from`/`to`) by
-  // grouping on route+network+ref+colour and keeping the variant with the
-  // most track-way members.
-  const groups = new Map();
-  for (const r of routes) {
-    const k = groupKey(r);
-    const arr = groups.get(k) || [];
-    arr.push(r);
-    groups.set(k, arr);
+  if (!Array.isArray(msg.features)) {
+    pending.reject(new Error("malformed"));
+    return;
   }
-
-  const seen = new Map();
-  for (const [, members] of groups) {
-    let best = members[0],
-      bestN = trackWayCount(best);
-    for (let i = 1; i < members.length; i++) {
-      const n = trackWayCount(members[i]);
-      if (n > bestN) {
-        bestN = n;
-        best = members[i];
-      }
-    }
-    const mode = best.tags.route;
-    const color = normalizeColor(best.tags.colour || best.tags.color);
-    ingest(best, mode, color, ways, seen);
-  }
-
-  // Stitch ways into continuous chains per (mode, color) bucket so each
-  // line renders as one Polyline with proper round joins.
-  const buckets = new Map();
-  for (const w of seen.values()) {
-    const k = w.mode + "|" + (w.color || "");
-    let arr = buckets.get(k);
-    if (!arr) {
-      arr = [];
-      buckets.set(k, arr);
-    }
-    arr.push(w);
-  }
-
-  const features = [];
-  for (const [, arr] of buckets) {
-    const byEndpoint = new Map();
-    const remaining = new Set(arr);
-    for (const w of arr) {
-      const a = w.nodeIds[0],
-        b = w.nodeIds[w.nodeIds.length - 1];
-      if (!byEndpoint.has(a)) byEndpoint.set(a, new Set());
-      if (!byEndpoint.has(b)) byEndpoint.set(b, new Set());
-      byEndpoint.get(a).add(w);
-      byEndpoint.get(b).add(w);
-    }
-    const removeWay = (w) => {
-      remaining.delete(w);
-      const a = w.nodeIds[0],
-        b = w.nodeIds[w.nodeIds.length - 1];
-      byEndpoint.get(a)?.delete(w);
-      byEndpoint.get(b)?.delete(w);
-    };
-
-    while (remaining.size) {
-      const start = remaining.values().next().value;
-      removeWay(start);
-      let chainNodes = [...start.nodeIds];
-
-      // Extend forward (from end of chain).
-      let extended = true;
-      while (extended) {
-        extended = false;
-        const tail = chainNodes[chainNodes.length - 1];
-        const candidates = byEndpoint.get(tail);
-        if (candidates && candidates.size) {
-          const nxt = candidates.values().next().value;
-          removeWay(nxt);
-          const ids = nxt.nodeIds;
-          if (ids[0] === tail) chainNodes.push(...ids.slice(1));
-          else chainNodes.push(...ids.slice(0, -1).reverse());
-          extended = true;
-        }
-      }
-      // Extend backward (from start of chain).
-      extended = true;
-      while (extended) {
-        extended = false;
-        const head = chainNodes[0];
-        const candidates = byEndpoint.get(head);
-        if (candidates && candidates.size) {
-          const nxt = candidates.values().next().value;
-          removeWay(nxt);
-          const ids = nxt.nodeIds;
-          if (ids[ids.length - 1] === head)
-            chainNodes = [...ids.slice(0, -1), ...chainNodes];
-          else chainNodes = [...ids.slice(1).reverse(), ...chainNodes];
-          extended = true;
-        }
-      }
-
-      const path = [];
-      for (const nid of chainNodes) {
-        const ll = nodes.get(nid);
-        if (ll) path.push({ lat: ll[0], lng: ll[1] });
-      }
-      if (path.length >= 2)
-        features.push({ mode: start.mode, color: start.color, path });
-    }
-  }
-
-  // Simplify each chain (~3m epsilon).
-  const SIMPLIFY_DEG = 0.00003;
-  return features.map((f) => ({
-    ...f,
-    path: douglasPeucker(f.path, SIMPLIFY_DEG),
-  }));
+  pending.resolve(msg.features);
 }
 
-function trackWayCount(rel) {
-  let n = 0;
-  for (const m of rel.members || []) {
-    if (m.type !== "way") continue;
-    const role = m.role || "";
-    if (role === "" || role === "forward" || role === "backward") n++;
-  }
-  return n;
+function isTransitEnabled() {
+  return !!(
+    state.settings.enabled &&
+    state.settings.transit &&
+    state.settings.transit.enabled
+  );
 }
 
-function groupKey(rel) {
-  const t = rel.tags;
-  const ref = t.ref || "";
-  const network = t.network || t.operator || "";
-  const color = t.colour || t.color || "";
-  // ref is the strongest signal; fall back to color for unrefed long-distance trains.
-  const ident = ref || color;
-  return [t.route, network, ident].join("|");
+const VALID_MODES = ["subway", "tram", "light_rail", "train"];
+function enabledModeList() {
+  const m = (state.settings.transit && state.settings.transit.modes) || {};
+  return VALID_MODES.filter((k) => m[k]);
 }
 
-function ingest(rel, mode, color, ways, seen) {
-  for (const m of rel.members || []) {
-    if (m.type !== "way") continue;
-    const role = m.role || "";
-    if (role !== "" && role !== "forward" && role !== "backward") continue;
-    const key = mode + ":" + m.ref;
-    const existing = seen.get(key);
-    if (existing && existing.color) continue;
-    const wn = ways.get(m.ref);
-    if (!wn || wn.length < 2) continue;
-    seen.set(key, { mode, color, nodeIds: wn });
-  }
+function currentBboxKey(map) {
+  const bounds = map.getBounds();
+  if (!bounds) return null;
+  const ne = bounds.getNorthEast();
+  const sw = bounds.getSouthWest();
+  return quantizeBbox(sw.lat(), sw.lng(), ne.lat(), ne.lng());
+}
+
+const MAX_BBOX_SPAN_DEG = 1;
+function viewportTooLarge(map) {
+  const bounds = map.getBounds();
+  if (!bounds) return false;
+  const ne = bounds.getNorthEast();
+  const sw = bounds.getSouthWest();
+  const latSpan = ne.lat() - sw.lat();
+  let lngSpan = ne.lng() - sw.lng();
+  if (lngSpan < 0) lngSpan += 360; // antimeridian wrap
+  return latSpan > MAX_BBOX_SPAN_DEG || lngSpan > MAX_BBOX_SPAN_DEG;
+}
+
+function setTransitLoading(entry, loading) {
+  if (entry.transitLoading === loading) return;
+  entry.transitLoading = loading;
+  if (entry.controlsSync) entry.controlsSync(state.settings, entry);
+}
+
+function roundMs(ms) {
+  return Math.round(ms * 10) / 10;
 }

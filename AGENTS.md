@@ -46,7 +46,7 @@ Three execution contexts, each in its own JS realm:
 
 - **MAIN world** is required to see `window.google.maps`. Content scripts
   run in an isolated world that can't reach the page's `google` global.
-- **ISOLATED world** (`bridge.js`) is required for `chrome.storage` and
+- **ISOLATED world** (`bridge.js` + `bridge/*.js`) is required for `chrome.storage` and
   to perform fetches that bypass the page's CSP (Overpass, Hoodmaps).
 - **Popup** is a separate document; it talks to storage directly and
   uses `chrome.scripting.executeScript` to probe whether a map exists.
@@ -61,18 +61,20 @@ boundary). Two source tags:
   fetch responses)
 
 Message types: `requestSettings`, `updateSettings`, `settings`,
-`tagsRequest`/`tagsResponse`, `districtsRequest`/`districtsResponse`.
+`transitRequest`/`transitResponse`, `tagsRequest`/`tagsResponse`,
+`districtsRequest`/`districtsResponse`.
 
 ## File map
 
 | File                     | World              | Responsibility                                                                                                                                                                                               |
 | ------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `manifest.json`          | —                  | MV3 config. Host permissions for every Airbnb TLD. Exposes `page.js` and `src/*.js` as web-accessible so the MAIN-world module graph can `import` from `chrome-extension://` URLs.                           |
-| `bridge.js`              | content (isolated) | Injects `page.js` as `<script type="module">`. Mirrors `chrome.storage.local` ↔ postMessage settings. Proxies hoodmaps.com tag + district fetches with a 24h `chrome.storage.local` cache.                   |
+| `bridge/*.js`            | content (isolated) | Ordered helper scripts for settings contracts, storage-backed caches, Hoodmaps proxying, Overpass parsing, and transit tile orchestration.                                                                    |
+| `bridge.js`              | content (isolated) | Entry/dispatcher. Injects `page.js` as `<script type="module">`, mirrors `chrome.storage.local` ↔ postMessage settings, and routes page-world fetch requests to the helper scripts.                          |
 | `page.js`                | MAIN               | Entry. Wires up message listener, hooks `google.maps.Map` constructor, polls DOM for existing maps, registers each map and dispatches `refreshAll`. Also patches history methods to react to SPA navigation. |
 | `src/state.js`           | MAIN               | Single source of truth: `state.settings`, `state.maps`, `state.perMap` (WeakMap keyed by map → render state), in-memory caches, source-tag constants.                                                        |
 | `src/utils.js`           | MAIN               | `quantizeBbox`, `normalizeColor`, `douglasPeucker`, `detectCitySlug`, `isMapUrl`, `ensureFont`.                                                                                                              |
-| `src/transit.js`         | MAIN               | Overpass fetch + parser (collapses direction-pair routes, stitches way segments into continuous polylines), polyline rendering.                                                                              |
+| `src/transit.js`         | MAIN               | Overpass request orchestration + parser (collapses direction-pair routes, stitches way segments into continuous polylines), polyline rendering.                                                              |
 | `src/tags.js`            | MAIN               | `TextOverlay` class (extends `google.maps.OverlayView`), tag placement: vote-rank + pixel-space AABB collision + word-wrap + zoom-tier sizing.                                                               |
 | `src/districts.js`       | MAIN               | GeoJSON polygon layer using `google.maps.Data`. Per-category color + per-feature density-driven opacity.                                                                                                     |
 | `src/controls.js`        | MAIN               | Shadow-DOM "Layers" pill control inserted into `map.controls[LEFT_TOP]`. HTML template inlined at the bottom of the file.                                                                                    |
@@ -156,7 +158,8 @@ Overpass returns route relations + their member ways + the ways' nodes.
 3. **Simplify.** Douglas-Peucker with ~3m epsilon.
 
 Bbox is quantized to a 0.05° grid (with 0.02° padding) so small pans
-reuse the cache.
+reuse the in-memory page cache and the bridge's storage-backed Overpass
+cache.
 
 ### ES modules in MAIN world
 
@@ -192,7 +195,7 @@ Follow the rules in CLAUDE-style guidelines:
 
 - **Keep them short.** Subject line under ~72 chars, present tense
   imperative ("fix X", "split Y into Z"). Add a short body only when
-  the *why* needs explaining; otherwise the subject is enough.
+  the _why_ needs explaining; otherwise the subject is enough.
 - **Do not add `Co-Authored-By: Claude` (or any AI attribution)
   trailers.** Plain commits, no AI footer.
 - **Do not add the "🤖 Generated with Claude Code" footer either.**

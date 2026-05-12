@@ -3,10 +3,7 @@
   "name": "Airbnb Better Maps",
   "version": "0.3.1",
   "description": "Adds extra layers to Airbnb's map so you can pick the best place to stay based on what matters to you.",
-  "permissions": [
-    "storage",
-    "scripting"
-  ],
+  "permissions": ["storage", "scripting"],
   "host_permissions": [
     "https://*.airbnb.com/*",
     "https://www.airbnb.ae/*",
@@ -77,7 +74,8 @@
     "https://www.airbnb.sk/*",
     "https://www.airbnb.tw/*",
     "https://www.airbnb.ua/*",
-    "https://hoodmaps.com/*"
+    "https://hoodmaps.com/*",
+    "https://overpass-api.de/*"
   ],
   "icons": {
     "16": "icons/icon-16.png",
@@ -169,6 +167,12 @@
         "https://www.airbnb.ua/*"
       ],
       "js": [
+        "bridge/contracts.js",
+        "bridge/cache.js",
+        "bridge/tiles.js",
+        "bridge/overpass-parser.js",
+        "bridge/transit.js",
+        "bridge/hoodmaps.js",
         "bridge.js"
       ],
       "run_at": "document_start",
@@ -177,10 +181,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": [
-        "page.js",
-        "src/*.js"
-      ],
+      "resources": ["page.js", "src/*.js"],
       "matches": [
         "https://*.airbnb.com/*",
         "https://www.airbnb.ae/*",

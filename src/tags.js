@@ -5,6 +5,8 @@
 import { state, PAGE_SOURCE } from "./state.js";
 import { detectCitySlug, ensureFont } from "./utils.js";
 
+const PERF_PREFIX = "[abnb-better-maps:perf]";
+
 let TextOverlay = null;
 function ensureTextOverlay() {
   if (TextOverlay || !window.google || !google.maps || !google.maps.OverlayView)
@@ -68,6 +70,7 @@ export function clearTagOverlays(entry) {
 }
 
 export function refreshTags(map) {
+  const startedAt = performance.now();
   const entry = state.perMap.get(map);
   if (!entry) return;
   const hm = state.settings.hoodmaps || {};
@@ -89,6 +92,10 @@ export function refreshTags(map) {
         { source: PAGE_SOURCE, type: "tagsRequest", slug },
         "*",
       );
+      console.log(PERF_PREFIX, "tags request", {
+        slug,
+        totalMs: roundMs(performance.now() - startedAt),
+      });
     }
     return;
   }
@@ -193,6 +200,14 @@ export function refreshTags(map) {
     o.setMap(map);
     entry.tagOverlays.push(o);
   }
+  console.log(PERF_PREFIX, "tags refresh", {
+    slug,
+    tier,
+    inView: inView.length,
+    candidates: ranked.length,
+    placed: placed.length,
+    totalMs: roundMs(performance.now() - startedAt),
+  });
 }
 
 // Hoodmaps wraps long labels onto 2-3 lines so they don't bulldoze their
@@ -229,4 +244,8 @@ function measure(text, fontSize) {
   const w = fontSize * 0.55 * longest + padX * 2;
   const h = fontSize * 1.05 * lines.length + padY * 2;
   return { w, h, lines, padX };
+}
+
+function roundMs(ms) {
+  return Math.round(ms * 10) / 10;
 }

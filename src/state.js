@@ -6,7 +6,7 @@ export const DEFAULT_SETTINGS = {
   enabled: true,
   transit: {
     enabled: true,
-    modes: { subway: true, tram: true, light_rail: true, train: true },
+    modes: { subway: true, tram: false, light_rail: false, train: false },
   },
   hoodmaps: {
     enabled: false,
@@ -30,6 +30,8 @@ export const state = {
   maps: new Set(),
   perMap: new WeakMap(),
   cache: new Map(),
+  transitPending: new Map(),
+  transitRequests: new Map(),
   tagsBySlug: new Map(),
   tagsPending: new Set(),
   districtsBySlug: new Map(),

@@ -4,10 +4,12 @@
 
 import { state, PAGE_SOURCE, BRIDGE_SOURCE } from "./src/state.js";
 import { isMapUrl } from "./src/utils.js";
-import { refreshTransit } from "./src/transit.js";
+import { refreshTransit, handleTransitResponse } from "./src/transit.js";
 import { refreshTags } from "./src/tags.js";
 import { refreshDistricts } from "./src/districts.js";
 import { refreshControls } from "./src/controls.js";
+
+const PERF_PREFIX = "[abnb-better-maps:perf]";
 
 function refreshAll(map) {
   refreshTransit(map);
@@ -29,6 +31,8 @@ window.addEventListener("message", (e) => {
     state.districtsPending.delete(e.data.slug);
     if (e.data.geojson) state.districtsBySlug.set(e.data.slug, e.data.geojson);
     for (const m of state.maps) refreshDistricts(m);
+  } else if (e.data.type === "transitResponse") {
+    handleTransitResponse(e.data);
   }
 });
 
@@ -95,14 +99,24 @@ function hookMapConstructor() {
 }
 
 function findExistingMaps() {
+  const startedAt = performance.now();
   const found = new Set();
-  for (const el of document.querySelectorAll("*")) {
+  const elements = document.querySelectorAll("*");
+  for (const el of elements) {
     for (const k of Object.keys(el)) {
       try {
         const v = el[k];
         if (v && v instanceof google.maps.Map) found.add(v);
       } catch {}
     }
+  }
+  const elapsed = performance.now() - startedAt;
+  if (elapsed > 20) {
+    console.log(PERF_PREFIX, "map discovery", {
+      elements: elements.length,
+      maps: found.size,
+      totalMs: roundMs(elapsed),
+    });
   }
   return [...found];
 }
@@ -115,6 +129,9 @@ function register(map) {
     polylines: [],
     lastBboxKey: null,
     fetching: false,
+    fetchingBboxKey: null,
+    needsTransitRefresh: false,
+    transitLoading: false,
     tagOverlays: [],
     tagsSlug: null,
     dataLayer: null,
@@ -127,4 +144,8 @@ function register(map) {
     refreshTags(map);
   });
   refreshAll(map);
+}
+
+function roundMs(ms) {
+  return Math.round(ms * 10) / 10;
 }
