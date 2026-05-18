@@ -4,3 +4,8 @@ node_modules/
 .vscode/
 .idea/
 dist/
+video/
+screenshots/
+store-assets/
+*.mp4
+*.webm

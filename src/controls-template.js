@@ -134,6 +134,14 @@ export const TEMPLATE = `
     .slider-row .val input:disabled {
       color: #6b6b6b; background: #f5f5f5; cursor: not-allowed;
     }
+    .credit {
+      margin-top: 8px; padding-top: 8px; border-top: 1px solid #ececec;
+      color: #777; font-size: 11px; line-height: 1.35;
+    }
+    .credit a {
+      color: #ff385c; font-weight: 600; text-decoration: none;
+    }
+    .credit a:hover { text-decoration: underline; }
   </style>
   <div class="root">
     <div class="pill" id="pill">
@@ -184,6 +192,10 @@ export const TEMPLATE = `
             <label class="row"><input type="checkbox" data-cat="tourists"><span class="swatch" style="background:#ff4742"></span>Tourists</label>
             <label class="row"><input type="checkbox" data-cat="nightlife"><span class="swatch" style="background:#9B51E0"></span>Nightlife</label>
             <label class="row"><input type="checkbox" data-cat="crime"><span class="swatch" style="background:#444"></span>Crime</label>
+          </div>
+          <div class="credit">
+            Data from
+            <a href="https://hoodmaps.com" target="_blank" rel="noopener noreferrer">hoodmaps.com</a>
           </div>
         </div>
       </div>
