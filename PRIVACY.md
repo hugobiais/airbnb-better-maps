@@ -1,6 +1,6 @@
 # Privacy Policy — Airbnb Better Maps
 
-_Last updated: 2026-05-04._
+_Last updated: 2026-05-20._
 
 ## Summary
 
@@ -25,13 +25,13 @@ This data lives on your device only. Uninstalling the extension removes it.
 
 To draw the overlays, the extension makes requests to the following
 public APIs. No user-identifying data is sent in these requests — only
-the geographic bounding box of the visible map area, or the city slug
-visible in your Airbnb URL.
+the geographic bounding box of the visible map area, or the Hoodmaps dataset
+slug resolved from that visible area.
 
 | Endpoint                                              | Purpose                                                   |
 | ----------------------------------------------------- | --------------------------------------------------------- |
 | `https://overpass-api.de/api/interpreter`             | OpenStreetMap transit-line geometry for the visible area. |
-| `https://hoodmaps.com/?action=get_data&slug=<city>`   | Hoodmaps neighborhood text labels for the current city.   |
+| `https://hoodmaps.com/?action=get_data&slug=<city>`   | Hoodmaps neighborhood labels and pixels for the resolved map area. |
 | `https://hoodmaps.com/assets/districts_categorized/…` | Hoodmaps neighborhood category polygons.                  |
 | `https://fonts.googleapis.com/css2?family=Nunito…`    | Loads the Nunito web font used for tag labels.            |
 

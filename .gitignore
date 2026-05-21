@@ -1,6 +1,9 @@
 .DS_Store
 *.zip
 node_modules/
+.hoodmaps-cache/
+playwright-report/
+test-results/
 .vscode/
 .idea/
 dist/

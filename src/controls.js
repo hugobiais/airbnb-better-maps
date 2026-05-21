@@ -5,13 +5,20 @@
 
 import { state, PAGE_SOURCE } from "./state.js";
 import { refreshDistricts } from "./districts.js";
+import { refreshPixels } from "./pixels.js";
 import { TEMPLATE } from "./controls-template.js";
+import {
+  ensureHoodmapsData,
+  getHoodmapsAvailability,
+} from "./hoodmaps-data.js";
+import { resolveHoodmapsSlug } from "./hoodmaps-resolver.js";
 
 export function refreshControls(map) {
   const entry = state.perMap.get(map);
   if (!entry) return;
   if (!state.settings.enabled) {
     if (entry.controlsHost) {
+      clearHoodmapsModeRetry(entry);
       const arr = map.controls[google.maps.ControlPosition.LEFT_TOP];
       for (let i = arr.getLength() - 1; i >= 0; i--) {
         if (arr.getAt(i) === entry.controlsHost) {
@@ -30,7 +37,7 @@ export function refreshControls(map) {
     entry.controlsHost = built.host;
     entry.controlsSync = built.sync;
   }
-  if (entry.controlsSync) entry.controlsSync(state.settings, entry);
+  if (entry.controlsSync) entry.controlsSync(state.settings, entry, map);
 }
 
 function buildControls() {
@@ -43,10 +50,18 @@ function buildControls() {
   const pill = $("pill"),
     panel = $("panel");
   const modeInputs = () => shadow.querySelectorAll("input[data-mode]");
+  const hoodmapsModeInputs = () =>
+    shadow.querySelectorAll('input[name="hoodmapsMode"]');
   const catInputs = () => shadow.querySelectorAll("input[data-cat]");
+  let latestSettings = state.settings;
+  let latestEntry = null;
+  let latestMap = null;
 
   pill.addEventListener("click", (e) => {
     e.stopPropagation();
+    if (panel.hidden && latestEntry && latestMap) {
+      sync(latestSettings, latestEntry, latestMap);
+    }
     panel.hidden = !panel.hidden;
   });
   // Click outside the host (and its shadow) closes the panel.
@@ -70,6 +85,7 @@ function buildControls() {
       },
       hoodmaps: {
         enabled: $("hoodmapsEnabled").checked,
+        mode: selectedHoodmapsMode(),
         labels: $("hoodmapsLabels").checked,
         opacity: Number($("hoodmapsOpacity").value),
         categories: {
@@ -95,6 +111,7 @@ function buildControls() {
   shadow
     .querySelectorAll('input[type="checkbox"]')
     .forEach((el) => el.addEventListener("change", send));
+  hoodmapsModeInputs().forEach((el) => el.addEventListener("change", send));
   // Opacity changes restyle locally on every input event (no debounce, no
   // round-trip through chrome.storage) so dragging feels instantaneous. The
   // persisted write is debounced separately.
@@ -106,7 +123,10 @@ function buildControls() {
   const applyOpacityLocal = (value) => {
     if (!state.settings.hoodmaps) return;
     state.settings.hoodmaps.opacity = value;
-    for (const m of state.maps) refreshDistricts(m);
+    for (const m of state.maps) {
+      refreshDistricts(m);
+      refreshPixels(m);
+    }
   };
   $("hoodmapsOpacity").addEventListener("input", () => {
     const v = Number($("hoodmapsOpacity").value);
@@ -131,7 +151,10 @@ function buildControls() {
     scheduleSend();
   });
 
-  function sync(s, entry) {
+  function sync(s, entry, map) {
+    latestSettings = s;
+    latestEntry = entry;
+    latestMap = map;
     $("transitEnabled").checked = !!s.transit.enabled;
     $("hoodmapsEnabled").checked = !!s.hoodmaps.enabled;
     $("hoodmapsLabels").checked = !!s.hoodmaps.labels;
@@ -148,6 +171,7 @@ function buildControls() {
       hOn = !!s.hoodmaps.enabled;
     $("transitSection").dataset.on = String(tOn);
     $("hoodmapsSection").dataset.on = String(hOn);
+    syncHoodmapsMode(s, hOn, map, entry);
     for (const el of modeInputs()) {
       el.disabled = !tOn;
       el.closest(".row").classList.toggle("disabled", !tOn);
@@ -172,5 +196,137 @@ function buildControls() {
     }
   }
 
+  function selectedHoodmapsMode() {
+    const selected = shadow.querySelector(
+      'input[name="hoodmapsMode"]:checked',
+    );
+    return selected
+      ? selected.value
+      : state.settings.hoodmaps.mode || "districts";
+  }
+
+  let resolvedModeSlug = null;
+
+  function syncHoodmapsMode(s, hOn, map, entry) {
+    const block = $("hoodmapsModeBlock");
+    const loading = $("hoodmapsModeLoading");
+    const staticEl = $("hoodmapsModeStatic");
+    const selector = $("hoodmapsModeSelector");
+    if (!hOn) {
+      clearHoodmapsModeRetry(entry);
+      resolvedModeSlug = null;
+      block.hidden = true;
+      return;
+    }
+    const resolved = resolveHoodmapsSlug(map);
+    block.hidden = !resolved.requestedSlug;
+    if (block.hidden) {
+      clearHoodmapsModeRetry(entry);
+      return;
+    }
+    if (!resolved.ready) {
+      if (!resolvedModeSlug) {
+        showHoodmapsModeLoading(entry, map, loading, staticEl, selector);
+      }
+      return;
+    }
+
+    const slug = resolved.slug;
+    if (!slug) {
+      clearHoodmapsModeRetry(entry);
+      resolvedModeSlug = null;
+      loading.hidden = true;
+      selector.hidden = true;
+      staticEl.hidden = false;
+      for (const el of hoodmapsModeInputs()) el.disabled = true;
+      staticEl.textContent = "No color mode for this area";
+      return;
+    }
+
+    ensureHoodmapsData(slug);
+    const availability = availabilityForResolvedSlug(slug, resolved);
+    if (!availability.known) {
+      if (resolvedModeSlug !== slug) {
+        showHoodmapsModeLoading(entry, map, loading, staticEl, selector);
+      }
+      return;
+    }
+
+    resolvedModeSlug = slug;
+    clearHoodmapsModeRetry(entry);
+    loading.hidden = true;
+    const hasAnyMode = availability.districts || availability.pixels;
+    const onlyMode = availability.districts
+      ? "districts"
+      : availability.pixels
+        ? "pixels"
+        : null;
+    if (!hasAnyMode) {
+      clearHoodmapsModeRetry(entry);
+      selector.hidden = true;
+      staticEl.hidden = false;
+      for (const el of hoodmapsModeInputs()) el.disabled = true;
+      staticEl.textContent = "No color mode for this area";
+      return;
+    }
+
+    staticEl.hidden = true;
+    selector.hidden = false;
+    const effective =
+      availability.districts && availability.pixels
+        ? s.hoodmaps.mode === "pixels"
+          ? "pixels"
+          : "districts"
+        : onlyMode;
+    for (const el of hoodmapsModeInputs()) {
+      const available =
+        (el.value === "districts" && availability.districts) ||
+        (el.value === "pixels" && availability.pixels);
+      el.disabled = !available;
+      el.checked = el.value === effective;
+      const label = el.closest("label");
+      if (label) {
+        label.title = available
+          ? ""
+          : el.value === "districts"
+            ? "District mode is not available for this area"
+            : "Pixel mode is not available for this area";
+      }
+    }
+  }
+
+  function availabilityForResolvedSlug(slug, resolved) {
+    const live = getHoodmapsAvailability(slug);
+    if (live.known) return live;
+    const caps = resolved && resolved.capabilities;
+    if (!caps) return live;
+    return {
+      known: true,
+      districts: !!caps.districts,
+      pixels: !!caps.pixels,
+    };
+  }
+
+  function showHoodmapsModeLoading(entry, map, loading, staticEl, selector) {
+    loading.hidden = false;
+    staticEl.hidden = true;
+    selector.hidden = true;
+    scheduleHoodmapsModeRetry(entry, map);
+  }
+
   return { host, sync };
+}
+
+function scheduleHoodmapsModeRetry(entry, map) {
+  if (!entry || entry.hoodmapsModeRetryTimer) return;
+  entry.hoodmapsModeRetryTimer = setTimeout(() => {
+    entry.hoodmapsModeRetryTimer = null;
+    if (entry.controlsSync) entry.controlsSync(state.settings, entry, map);
+  }, 500);
+}
+
+function clearHoodmapsModeRetry(entry) {
+  if (!entry || !entry.hoodmapsModeRetryTimer) return;
+  clearTimeout(entry.hoodmapsModeRetryTimer);
+  entry.hoodmapsModeRetryTimer = null;
 }

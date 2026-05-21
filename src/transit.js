@@ -26,7 +26,7 @@ export async function refreshTransit(map) {
     clearPolylines(entry);
     entry.lastFeatures = null;
     entry.lastBboxKey = null;
-    setTransitLoading(entry, false);
+    setTransitLoading(entry, false, map);
     return;
   }
 
@@ -38,7 +38,7 @@ export async function refreshTransit(map) {
   // they zoom back in.
   if (viewportTooLarge(map)) {
     entry.loadingModes = null;
-    setTransitLoading(entry, false);
+    setTransitLoading(entry, false, map);
     return;
   }
 
@@ -47,7 +47,7 @@ export async function refreshTransit(map) {
 
   if (entry.fetching) {
     if (entry.fetchingBboxKey !== bboxKey) entry.needsTransitRefresh = true;
-    setTransitLoading(entry, true);
+    setTransitLoading(entry, true, map);
     console.log(PERF_PREFIX, "transit deferred", {
       bboxKey,
       fetchingBboxKey: entry.fetchingBboxKey,
@@ -63,7 +63,7 @@ export async function refreshTransit(map) {
     entry.lastBboxKey = null;
     entry.lastModes = [];
     entry.loadingModes = null;
-    setTransitLoading(entry, false);
+    setTransitLoading(entry, false, map);
     return;
   }
   const requestKey = modes.join(",") + "|" + bboxKey;
@@ -96,7 +96,7 @@ export async function refreshTransit(map) {
     const previousModes = entry.lastModes || [];
     const newlyAdded = modes.filter((m) => !previousModes.includes(m));
     entry.loadingModes = newlyAdded.length ? new Set(newlyAdded) : null;
-    setTransitLoading(entry, true);
+    setTransitLoading(entry, true, map);
     let fetchStartedAt = 0;
     try {
       source = state.cache.has(requestKey)
@@ -128,7 +128,7 @@ export async function refreshTransit(map) {
       entry.fetching = false;
       entry.fetchingBboxKey = null;
       entry.loadingModes = null;
-      setTransitLoading(entry, false);
+      setTransitLoading(entry, false, map);
       if (entry.needsTransitRefresh) {
         entry.needsTransitRefresh = false;
         refreshTransit(map);
@@ -257,10 +257,10 @@ function viewportTooLarge(map) {
   return latSpan > MAX_BBOX_SPAN_DEG || lngSpan > MAX_BBOX_SPAN_DEG;
 }
 
-function setTransitLoading(entry, loading) {
+function setTransitLoading(entry, loading, map) {
   if (entry.transitLoading === loading) return;
   entry.transitLoading = loading;
-  if (entry.controlsSync) entry.controlsSync(state.settings, entry);
+  if (entry.controlsSync) entry.controlsSync(state.settings, entry, map);
 }
 
 function roundMs(ms) {

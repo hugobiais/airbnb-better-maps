@@ -7,6 +7,7 @@ const DEFAULTS = {
   },
   hoodmaps: {
     enabled: false,
+    mode: "districts",
     labels: true,
     opacity: 35,
     categories: {

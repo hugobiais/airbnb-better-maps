@@ -1,0 +1,14 @@
+{
+  "name": "airbnb-better-maps",
+  "version": "0.4.2",
+  "private": true,
+  "scripts": {
+    "hoodmaps:index": "node scripts/generate-hoodmaps-index.js",
+    "test": "playwright test",
+    "test:live": "playwright test tests/live/airbnb-live.spec.js",
+    "test:live:airbnb": "playwright test tests/live/airbnb-live.spec.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}

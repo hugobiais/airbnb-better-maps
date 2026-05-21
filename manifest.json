@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Airbnb Better Maps",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "See transit lines, neighborhood vibes, and crowdsourced tags right on Airbnb's map. Pick the best place to stay.",
   "permissions": ["storage", "scripting"],
   "host_permissions": [
@@ -181,7 +181,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["page.js", "src/*.js"],
+      "resources": ["page.js", "src/*.js", "data/*.json"],
       "matches": [
         "https://*.airbnb.com/*",
         "https://www.airbnb.ae/*",

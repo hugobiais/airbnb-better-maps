@@ -11,11 +11,17 @@ matters to you.
   `colour` tag where available.
 - **Neighborhood zones** — Hoodmaps' categorical regions (Hipsters, Suits,
   Rich, Tourists, University, Normies, Nightlife, Crime) shown as colored
-  polygons.
+  district polygons where available, or as Hoodmaps' crowd-painted pixel cells
+  in cities that do not publish district GeoJSON.
 - **Hoodmaps tags** — short crowdsourced labels ("a LOT of tourists", "Rich
   person farmer's market", etc.), filtered and sized by vote count.
 
 All layers are toggleable from the **Layers** pill on the top-left of the map.
+For Hoodmaps colors, the menu shows a District / Pixel selector whenever a
+color mode is available for the current map area. The extension resolves the
+active Hoodmaps dataset from Airbnb's visible map bounds, so suburbs that are
+covered by a nearby Hoodmaps city (for example Saint-Denis → Paris) still show
+the available neighborhood data. Unavailable modes stay visible but disabled.
 The toolbar popup has a master on/off switch and a status indicator.
 
 ## Install (unpacked)
@@ -30,11 +36,45 @@ The extension only activates on Airbnb search-results URLs (`/s/<city>/homes`
 or `/s/<city>/all`). Listing-detail pages (`/rooms/<id>`) are intentionally
 skipped.
 
+## Live test
+
+Install dependencies and Playwright's Chromium once:
+
+```sh
+npm install
+npx playwright install chromium
+```
+
+Run the full Playwright suite:
+
+```sh
+npm run test
+```
+
+The live matrix opens the Airbnb search pages listed in
+`tests/live/hoodmaps-city-matrix.json` with the unpacked extension loaded:
+Paris for full Hoodmaps data, Cannes for pixel-only data, and Oakland for an
+overlapping-bbox resolver case. It also includes Antony because that Airbnb
+slug has no Hoodmaps page but should resolve to Paris coverage. It fails
+explicitly if Airbnb shows a captcha/gate, verifies Google Maps and the Layers
+control, enables Hoodmaps plus the default transit layer, and asserts that
+transit lines and Hoodmaps color overlays attach to the map. Hoodmaps data is
+fetched live; transit is deliberately faked. The test intercepts Overpass and
+returns one synthetic horizontal subway relation, so the transit assertion only
+proves that the extension draws polylines on the map. It does not validate real
+OSM transit geometry or city-specific route coverage.
+
+To refresh the offline Hoodmaps coverage index used by the resolver:
+
+```sh
+npm run hoodmaps:index
+```
+
 ## Credits
 
 - Transit geometry: [OpenStreetMap](https://www.openstreetmap.org/) contributors,
   via the [Overpass API](https://overpass-api.de/).
-- Neighborhood zones and tags: [Hoodmaps](https://hoodmaps.com/).
+- Neighborhood zones, pixels, and tags: [Hoodmaps](https://hoodmaps.com/).
 
 ## Contributing / hacking
 

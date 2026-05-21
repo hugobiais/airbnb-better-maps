@@ -2,8 +2,10 @@
 // fetch via bridge.js (cached), then place top-N by votes using pixel-space
 // AABB collision so wide labels don't overlap their neighbors.
 
-import { state, PAGE_SOURCE } from "./state.js";
-import { detectCitySlug, ensureFont } from "./utils.js";
+import { state } from "./state.js";
+import { ensureFont } from "./utils.js";
+import { ensureHoodmapsData } from "./hoodmaps-data.js";
+import { resolveHoodmapsSlug } from "./hoodmaps-resolver.js";
 
 const PERF_PREFIX = "[abnb-better-maps:perf]";
 
@@ -78,7 +80,13 @@ export function refreshTags(map) {
     clearTagOverlays(entry);
     return;
   }
-  const slug = detectCitySlug();
+  const resolved = resolveHoodmapsSlug(map);
+  if (entry.tagsRequestedSlug !== resolved.requestedSlug) {
+    clearTagOverlays(entry);
+    entry.tagsRequestedSlug = resolved.requestedSlug;
+  }
+  if (!resolved.ready) return;
+  const slug = resolved.slug;
   // Drop stale labels immediately on slug change — otherwise we'd keep
   // the old city's text on screen until the new fetch returns.
   if (entry.tagsSlug !== slug) clearTagOverlays(entry);
@@ -86,12 +94,9 @@ export function refreshTags(map) {
   if (!slug) return;
   const tags = state.tagsBySlug.get(slug);
   if (!tags) {
-    if (!state.tagsPending.has(slug)) {
-      state.tagsPending.add(slug);
-      window.postMessage(
-        { source: PAGE_SOURCE, type: "tagsRequest", slug },
-        "*",
-      );
+    const wasPending = state.hoodmapsDataPending.has(slug);
+    ensureHoodmapsData(slug);
+    if (!wasPending && state.hoodmapsDataPending.has(slug)) {
       console.log(PERF_PREFIX, "tags request", {
         slug,
         totalMs: roundMs(performance.now() - startedAt),

@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS = {
   },
   hoodmaps: {
     enabled: false,
+    mode: "districts",
     labels: true,
     opacity: 35,
     categories: {
@@ -34,7 +35,11 @@ export const state = {
   transitRequests: new Map(),
   tagsBySlug: new Map(),
   tagsPending: new Set(),
+  hoodmapsDataPending: new Set(),
+  hoodmapsCapabilitiesBySlug: new Map(),
+  pixelPathsBySlug: new Map(),
   districtsBySlug: new Map(),
+  districtsUnavailableBySlug: new Set(),
   districtsPending: new Set(),
 };
 

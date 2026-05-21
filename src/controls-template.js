@@ -105,6 +105,37 @@ export const TEMPLATE = `
       border-top-color: #ff385c; border-radius: 50%;
       animation: spin .75s linear infinite;
     }
+    .mode-block { margin: 2px 0 8px; }
+    .mode-block[hidden], .mode-static[hidden], .segmented[hidden] {
+      display: none;
+    }
+    .mode-static {
+      min-height: 28px; display: flex; align-items: center;
+      padding: 5px 8px; background: #fff; border: 1px solid #ececec;
+      border-radius: 8px; font-size: 12px; color: #4f4f4f;
+    }
+    .segmented {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
+      padding: 2px; background: #eeeeee; border-radius: 8px;
+    }
+    .segmented label { position: relative; min-width: 0; cursor: pointer; }
+    .segmented input {
+      position: absolute; inset: 0; opacity: 0; pointer-events: none;
+    }
+    .segmented span {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 26px; padding: 5px 8px; border-radius: 6px;
+      font-size: 12px; font-weight: 600; color: #555;
+      transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+    }
+    .segmented input:checked + span {
+      background: #fff; color: #ff385c;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+    }
+    .segmented input:disabled + span {
+      color: #9a9a9a; cursor: not-allowed; opacity: .58;
+      box-shadow: none; text-decoration: line-through;
+    }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
     .slider-row {
       display: flex; align-items: center; gap: 8px;
@@ -175,6 +206,24 @@ export const TEMPLATE = `
         </div>
         <div class="section-body">
           <label class="row"><input type="checkbox" id="hoodmapsLabels">Show tags</label>
+          <div class="mode-block" id="hoodmapsModeBlock" hidden>
+            <div class="sub-head">Color mode</div>
+            <div class="status-line" id="hoodmapsModeLoading" hidden>
+              <span class="mini-spinner" aria-hidden="true"></span>
+              <span>Checking color modes...</span>
+            </div>
+            <div class="mode-static" id="hoodmapsModeStatic" hidden></div>
+            <div class="segmented" id="hoodmapsModeSelector" role="group" aria-label="Hoodmaps color mode" hidden>
+              <label>
+                <input type="radio" name="hoodmapsMode" value="districts">
+                <span>District</span>
+              </label>
+              <label>
+                <input type="radio" name="hoodmapsMode" value="pixels">
+                <span>Pixel</span>
+              </label>
+            </div>
+          </div>
           <div class="slider-row">
             <span class="lbl">Opacity</span>
             <input type="range" id="hoodmapsOpacity" min="0" max="100" step="1">

@@ -61,23 +61,28 @@ boundary). Two source tags:
   fetch responses)
 
 Message types: `requestSettings`, `updateSettings`, `settings`,
-`transitRequest`/`transitResponse`, `tagsRequest`/`tagsResponse`,
+`transitRequest`/`transitResponse`, `hoodmapsDataRequest`/`hoodmapsDataResponse`,
+`tagsRequest`/`tagsResponse`,
 `districtsRequest`/`districtsResponse`.
 
 ## File map
 
 | File                     | World              | Responsibility                                                                                                                                                                                               |
 | ------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `manifest.json`          | —                  | MV3 config. Host permissions for every Airbnb TLD. Exposes `page.js` and `src/*.js` as web-accessible so the MAIN-world module graph can `import` from `chrome-extension://` URLs.                           |
+| `manifest.json`          | —                  | MV3 config. Host permissions for every Airbnb TLD. Exposes `page.js`, `src/*.js`, and `data/*.json` as web-accessible so the MAIN-world module graph can import modules and fetch resolver data from `chrome-extension://` URLs. |
 | `bridge/*.js`            | content (isolated) | Ordered helper scripts for settings contracts, storage-backed caches, Hoodmaps proxying, Overpass parsing, and transit tile orchestration.                                                                    |
 | `bridge.js`              | content (isolated) | Entry/dispatcher. Injects `page.js` as `<script type="module">`, mirrors `chrome.storage.local` ↔ postMessage settings, and routes page-world fetch requests to the helper scripts.                          |
 | `page.js`                | MAIN               | Entry. Wires up message listener, hooks `google.maps.Map` constructor, polls DOM for existing maps, registers each map and dispatches `refreshAll`. Also patches history methods to react to SPA navigation. |
 | `src/state.js`           | MAIN               | Single source of truth: `state.settings`, `state.maps`, `state.perMap` (WeakMap keyed by map → render state), in-memory caches, source-tag constants.                                                        |
 | `src/utils.js`           | MAIN               | `quantizeBbox`, `normalizeColor`, `douglasPeucker`, `detectCitySlug`, `isMapUrl`, `ensureFont`.                                                                                                              |
 | `src/transit.js`         | MAIN               | Overpass request orchestration + parser (collapses direction-pair routes, stitches way segments into continuous polylines), polyline rendering.                                                              |
+| `src/hoodmaps-resolver.js` | MAIN             | Lazy-loads `data/hoodmaps-coverage-index.json`, resolves the Hoodmaps dataset for the current Google Maps bounds, and breaks overlap ties by nearest dataset center.                                        |
+| `src/hoodmaps-data.js`   | MAIN               | Shared Hoodmaps data capability cache. Requests the full `get_data` payload and decides whether district mode, pixel mode, or both are available for the resolved Hoodmaps dataset.                         |
 | `src/tags.js`            | MAIN               | `TextOverlay` class (extends `google.maps.OverlayView`), tag placement: vote-rank + pixel-space AABB collision + word-wrap + zoom-tier sizing.                                                               |
 | `src/districts.js`       | MAIN               | GeoJSON polygon layer using `google.maps.Data`. Per-category color + per-feature density-driven opacity.                                                                                                     |
-| `src/controls.js`        | MAIN               | Shadow-DOM "Layers" pill control inserted into `map.controls[LEFT_TOP]`. HTML template inlined at the bottom of the file.                                                                                    |
+| `src/pixels.js`          | MAIN               | Canvas `OverlayView` for Hoodmaps' crowd-painted pixel cells, used when a city lacks categorized district GeoJSON or when the user chooses pixel mode.                                                       |
+| `src/controls.js`        | MAIN               | Shadow-DOM "Layers" pill control inserted into `map.controls[LEFT_TOP]`. Syncs the Hoodmaps mode selector to resolved-area capabilities.                                                                     |
+| `src/controls-template.js` | MAIN             | HTML/CSS template for the on-map Layers control.                                                                                                                                                             |
 | `popup.html`, `popup.js` | popup              | Master on/off + status pill. Talks to `chrome.storage` directly.                                                                                                                                             |
 
 ## Non-obvious decisions
@@ -106,19 +111,47 @@ fast-path for the lucky-timing case.
 ### Airbnb is an SPA
 
 Switching destinations changes `location.pathname` via `pushState` without
-a real navigation. The map's `idle` event covers transit + tags (because
-the map pans), but **not** districts (the GeoJSON layer is independent of
-viewport). And during the fetch window for a new city's data, we'd
-otherwise show the previous city's overlays.
+a real navigation. The map's `idle` event covers pan/zoom changes, but a route
+change can swap the active destination without producing the refresh ordering
+we need. And during the fetch window for a new city's data, we'd otherwise
+show the previous city's overlays.
 
-Two-part fix in `page.js` + `src/districts.js` + `src/tags.js`:
+Two-part fix in `page.js` + the Hoodmaps layer modules:
 
 1. Patch `history.pushState`/`replaceState` and listen for `popstate`.
    When `location.pathname` changes, call `refreshAll` for every
    registered map.
-2. In `refreshDistricts` and `refreshTags`, clear the stale layer
-   immediately when `entry.districtsSlug !== slug` (or `tagsSlug !== slug`)
+2. In Hoodmaps layer refreshes, clear the stale layer immediately when the
+   resolved slug changes (`entry.districtsSlug`, `tagsSlug`, or `pixelsSlug`)
    — _before_ the early-return that waits for the new fetch.
+
+### Hoodmaps color modes
+
+Hoodmaps has two different color data sources:
+
+- `?action=get_data&slug=<city>` includes tags and crowd-painted pixel cells
+  (`oneDecimalLessAllUsersPaths`, `highZoomUsersPaths`) for many cities.
+- `/assets/districts_categorized/<city>.geojson` exists only when
+  `neighborhoodsGeoJSONAvailable` is true in that same `get_data` payload.
+
+Do not fetch district GeoJSON blindly for every city. Cannes, for example,
+publishes pixel cells but returns 404 for categorized district GeoJSON. The
+Layers menu should show the District / Pixel segmented control whenever any
+color mode is available, keeping unavailable options visible but disabled.
+Only cities with no color mode at all should fall back to a static message.
+
+Do not assume Airbnb's URL slug is the Hoodmaps slug. Hoodmaps pages cover
+bounding boxes, not just searchable city names: Saint-Denis, Antony, and
+Boulogne-Billancourt are covered by the Paris dataset even though those slugs
+do not have their own Hoodmaps pages. `src/hoodmaps-resolver.js` lazy-loads
+`data/hoodmaps-coverage-index.json`, finds datasets whose coverage tiles
+overlap the current Google Maps bounds, and picks the dataset center closest to
+the map center when multiple datasets overlap. Refresh that generated index
+with:
+
+```sh
+npm run hoodmaps:index
+```
 
 ### Tag placement
 
@@ -201,6 +234,34 @@ Follow the rules in CLAUDE-style guidelines:
 - **Do not add the "🤖 Generated with Claude Code" footer either.**
 
 ## Local test loop
+
+### Required before commit / push
+
+Before committing or pushing changes to `main`, run the Playwright suite:
+
+```sh
+npm run test
+```
+
+If dependencies or browsers are missing, install them first:
+
+```sh
+npm install
+npx playwright install chromium
+```
+
+The live matrix test intentionally opens the real Airbnb site with the unpacked
+extension loaded for the cities in `tests/live/hoodmaps-city-matrix.json`:
+Paris for full Hoodmaps data, Cannes for pixel-only data, and Oakland for an
+overlapping-bbox resolver case. It also includes Antony because that Airbnb
+slug has no Hoodmaps page but should resolve to Paris coverage. Hoodmaps data is
+fetched live; transit is deliberately faked by intercepting Overpass and
+returning one synthetic horizontal subway relation. The transit assertion only
+proves polyline rendering, not real OSM geometry or city-specific route
+coverage. The Hoodmaps assertions must prove color overlays are attached to the
+Google Map, not just that network data was fetched. If Airbnb shows a captcha
+or gate, treat that as a real test result and report it instead of bypassing
+the failure silently.
 
 ### Manual
 

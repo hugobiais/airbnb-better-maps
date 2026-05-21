@@ -22,6 +22,7 @@
     },
     hoodmaps: {
       enabled: false,
+      mode: "districts",
       labels: true, // text labels (the "names" — free-text crowdsourced tags)
       opacity: 35, // percent (0-100), applied to category zones
       categories: {

@@ -7,7 +7,10 @@ import { isMapUrl } from "./src/utils.js";
 import { refreshTransit, handleTransitResponse } from "./src/transit.js";
 import { refreshTags } from "./src/tags.js";
 import { refreshDistricts } from "./src/districts.js";
+import { refreshPixels } from "./src/pixels.js";
 import { refreshControls } from "./src/controls.js";
+import { applyHoodmapsDataResponse } from "./src/hoodmaps-data.js";
+import { HOODMAPS_INDEX_READY_EVENT } from "./src/hoodmaps-resolver.js";
 
 const PERF_PREFIX = "[abnb-better-maps:perf]";
 
@@ -15,6 +18,14 @@ function refreshAll(map) {
   refreshTransit(map);
   refreshTags(map);
   refreshDistricts(map);
+  refreshPixels(map);
+  refreshControls(map);
+}
+
+function refreshHoodmaps(map) {
+  refreshTags(map);
+  refreshDistricts(map);
+  refreshPixels(map);
   refreshControls(map);
 }
 
@@ -24,13 +35,24 @@ window.addEventListener("message", (e) => {
     state.settings = e.data.settings;
     for (const m of state.maps) refreshAll(m);
   } else if (e.data.type === "tagsResponse") {
-    state.tagsPending.delete(e.data.slug);
-    if (e.data.tags) state.tagsBySlug.set(e.data.slug, e.data.tags);
-    for (const m of state.maps) refreshTags(m);
+    applyHoodmapsDataResponse(e.data);
+    for (const m of state.maps) refreshHoodmaps(m);
+  } else if (e.data.type === "hoodmapsDataResponse") {
+    applyHoodmapsDataResponse(e.data);
+    for (const m of state.maps) refreshHoodmaps(m);
   } else if (e.data.type === "districtsResponse") {
     state.districtsPending.delete(e.data.slug);
-    if (e.data.geojson) state.districtsBySlug.set(e.data.slug, e.data.geojson);
-    for (const m of state.maps) refreshDistricts(m);
+    if (e.data.geojson) {
+      state.districtsBySlug.set(e.data.slug, e.data.geojson);
+      state.districtsUnavailableBySlug.delete(e.data.slug);
+      const caps = state.hoodmapsCapabilitiesBySlug.get(e.data.slug);
+      if (caps) caps.districts = true;
+    } else {
+      state.districtsUnavailableBySlug.add(e.data.slug);
+      const caps = state.hoodmapsCapabilitiesBySlug.get(e.data.slug);
+      if (caps) caps.districts = false;
+    }
+    for (const m of state.maps) refreshHoodmaps(m);
   } else if (e.data.type === "transitResponse") {
     handleTransitResponse(e.data);
   }
@@ -61,6 +83,9 @@ for (const k of ["pushState", "replaceState"]) {
   };
 }
 window.addEventListener("popstate", onMaybeNav);
+window.addEventListener(HOODMAPS_INDEX_READY_EVENT, () => {
+  for (const m of state.maps) refreshHoodmaps(m);
+});
 
 // Wait for google.maps.Map to exist, then wrap the constructor so every
 // map instance Airbnb creates is registered. Airbnb often caches the
@@ -133,15 +158,21 @@ function register(map) {
     needsTransitRefresh: false,
     transitLoading: false,
     tagOverlays: [],
+    tagsRequestedSlug: null,
     tagsSlug: null,
+    pixelOverlay: null,
+    pixelsRequestedSlug: null,
+    pixelsSlug: null,
     dataLayer: null,
+    districtsRequestedSlug: null,
     districtsSlug: null,
     controlsHost: null,
     controlsSync: null,
+    hoodmapsModeRetryTimer: null,
   });
   map.addListener("idle", () => {
     refreshTransit(map);
-    refreshTags(map);
+    refreshHoodmaps(map);
   });
   refreshAll(map);
 }

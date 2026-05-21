@@ -87,9 +87,17 @@ window.addEventListener("message", async (e) => {
 
   if (e.data.type === "tagsRequest") {
     try {
-      const tags = await bridge.fetchHoodmapsTags(slug);
+      const data = await bridge.fetchHoodmapsData(slug);
       window.postMessage(
-        { source: bridge.BRIDGE_SOURCE, type: "tagsResponse", slug, tags },
+        {
+          source: bridge.BRIDGE_SOURCE,
+          type: "tagsResponse",
+          slug,
+          tags: data.tags,
+          pixels: data.pixels,
+          capabilities: data.capabilities,
+          districtsUrl: data.districtsUrl,
+        },
         "*",
       );
     } catch (err) {
@@ -97,6 +105,32 @@ window.addEventListener("message", async (e) => {
         {
           source: bridge.BRIDGE_SOURCE,
           type: "tagsResponse",
+          slug,
+          error: String(err),
+        },
+        "*",
+      );
+    }
+  } else if (e.data.type === "hoodmapsDataRequest") {
+    try {
+      const data = await bridge.fetchHoodmapsData(slug);
+      window.postMessage(
+        {
+          source: bridge.BRIDGE_SOURCE,
+          type: "hoodmapsDataResponse",
+          slug,
+          tags: data.tags,
+          pixels: data.pixels,
+          capabilities: data.capabilities,
+          districtsUrl: data.districtsUrl,
+        },
+        "*",
+      );
+    } catch (err) {
+      window.postMessage(
+        {
+          source: bridge.BRIDGE_SOURCE,
+          type: "hoodmapsDataResponse",
           slug,
           error: String(err),
         },

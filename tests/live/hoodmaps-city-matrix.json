@@ -1,0 +1,66 @@
+{
+  "observedAt": "2026-05-20",
+  "source": "https://hoodmaps.com/?action=get_data&slug=<slug>",
+  "normalization": "Expected pixel counts ignore Hoodmaps [0,0] placeholder cells, matching bridge/hoodmaps.js normalizePaths().",
+  "cities": [
+    {
+      "name": "Paris",
+      "slug": "paris",
+      "airbnbUrl": "https://www.airbnb.com/s/Paris--France/homes?adults=2",
+      "mapCenter": [48.856614, 2.352222],
+      "case": "full-data",
+      "expectedHoodmaps": "both",
+      "observed": {
+        "tags": 5719,
+        "lowPixels": 7548,
+        "highPixels": 37241,
+        "districts": true
+      }
+    },
+    {
+      "name": "Cannes",
+      "slug": "cannes",
+      "airbnbUrl": "https://www.airbnb.com/s/Cannes--France/homes?adults=2",
+      "mapCenter": [43.554731, 6.931179],
+      "case": "pixel-only",
+      "expectedHoodmaps": "pixels",
+      "observed": {
+        "tags": 163,
+        "lowPixels": 2801,
+        "highPixels": 2888,
+        "districts": false
+      }
+    },
+    {
+      "name": "Oakland",
+      "slug": "oakland",
+      "airbnbUrl": "https://www.airbnb.com/s/Oakland--California/homes?adults=2",
+      "mapCenter": [37.804364, -122.271114],
+      "case": "overlapping-bbox",
+      "expectedHoodmaps": "both",
+      "expectedCandidateSlugs": ["oakland", "san-francisco"],
+      "observed": {
+        "tags": 728,
+        "lowPixels": 7824,
+        "highPixels": 31744,
+        "districts": true
+      }
+    },
+    {
+      "name": "Antony",
+      "slug": "antony",
+      "airbnbUrl": "https://www.airbnb.com/s/Antony--France/homes?adults=2",
+      "mapCenter": [48.7537, 2.2968],
+      "case": "covered-missing-slug",
+      "expectedResolvedSlug": "paris",
+      "expectedHoodmaps": "both",
+      "observed": {
+        "resolvedFrom": "paris",
+        "tags": 5719,
+        "lowPixels": 7548,
+        "highPixels": 37241,
+        "districts": true
+      }
+    }
+  ]
+}

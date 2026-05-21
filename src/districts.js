@@ -3,7 +3,12 @@
 // driving the fill alpha relative to the user's master opacity slider.
 
 import { state, PAGE_SOURCE } from "./state.js";
-import { detectCitySlug } from "./utils.js";
+import {
+  ensureHoodmapsData,
+  getEffectiveHoodmapsMode,
+  getHoodmapsAvailability,
+} from "./hoodmaps-data.js";
+import { resolveHoodmapsSlug } from "./hoodmaps-resolver.js";
 
 export const CATEGORY_COLORS = {
   hipsters: "#ffc924",
@@ -28,8 +33,25 @@ export function refreshDistricts(map) {
     }
     return;
   }
-  const slug = detectCitySlug();
-  if (!slug) return;
+  const resolved = resolveHoodmapsSlug(map);
+  if (entry.districtsRequestedSlug !== resolved.requestedSlug) {
+    if (entry.dataLayer) {
+      entry.dataLayer.setMap(null);
+      entry.dataLayer = null;
+      entry.districtsSlug = null;
+    }
+    entry.districtsRequestedSlug = resolved.requestedSlug;
+  }
+  if (!resolved.ready) return;
+  const slug = resolved.slug;
+  if (!slug) {
+    if (entry.dataLayer) {
+      entry.dataLayer.setMap(null);
+      entry.dataLayer = null;
+      entry.districtsSlug = null;
+    }
+    return;
+  }
 
   // Slug changed (SPA navigation to a new destination): tear down the old
   // city's polygons immediately so we don't show stale shapes while waiting
@@ -38,6 +60,26 @@ export function refreshDistricts(map) {
     entry.dataLayer.setMap(null);
     entry.dataLayer = null;
     entry.districtsSlug = null;
+  }
+
+  ensureHoodmapsData(slug);
+  const availability = getHoodmapsAvailability(slug);
+  if (!availability.known) return;
+  if (getEffectiveHoodmapsMode(slug) !== "districts") {
+    if (entry.dataLayer) {
+      entry.dataLayer.setMap(null);
+      entry.dataLayer = null;
+      entry.districtsSlug = null;
+    }
+    return;
+  }
+  if (!availability.districts) {
+    if (entry.dataLayer) {
+      entry.dataLayer.setMap(null);
+      entry.dataLayer = null;
+      entry.districtsSlug = null;
+    }
+    return;
   }
 
   const geojson = state.districtsBySlug.get(slug);
